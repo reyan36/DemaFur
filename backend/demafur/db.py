@@ -27,6 +27,20 @@ CREATE TABLE IF NOT EXISTS evidence (
  delivery_id TEXT PRIMARY KEY REFERENCES deliveries(id) ON DELETE CASCADE,
  created_at TEXT NOT NULL, payload TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS ring_routes (
+ device_id TEXT NOT NULL, component_id TEXT NOT NULL DEFAULT '',
+ delivery_id TEXT NOT NULL REFERENCES deliveries(id) ON DELETE CASCADE,
+ PRIMARY KEY(device_id, component_id)
+);
+CREATE TABLE IF NOT EXISTS integration_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS ring_jobs (
+ id TEXT PRIMARY KEY, delivery_id TEXT NOT NULL REFERENCES deliveries(id) ON DELETE CASCADE,
+ camera_id TEXT NOT NULL, device_id TEXT NOT NULL, component_id TEXT NOT NULL,
+ occurred_at TEXT NOT NULL, event_kind TEXT NOT NULL, fingerprint TEXT NOT NULL,
+ state TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, available_at REAL NOT NULL,
+ lease_until REAL, claim TEXT, error TEXT, media TEXT, analysis TEXT, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ring_jobs_ready ON ring_jobs(state,available_at);
 CREATE TABLE IF NOT EXISTS audit (
  id INTEGER PRIMARY KEY, delivery_id TEXT NOT NULL REFERENCES deliveries(id) ON DELETE CASCADE,
  operation TEXT NOT NULL, created_at TEXT NOT NULL
@@ -42,8 +56,8 @@ class Database:
             conn.executescript(SCHEMA)
 
     @contextmanager
-    def connect(self):
-        conn = sqlite3.connect(self.path, timeout=10)
+    def connect(self, timeout=10):
+        conn = sqlite3.connect(self.path, timeout=timeout)
         conn.row_factory = sqlite3.Row
         conn.execute('PRAGMA foreign_keys=ON')
         try:

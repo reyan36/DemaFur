@@ -1,6 +1,6 @@
 [project]
 name = "demafur-backend"
-version = "0.1.0"
+version = "0.2.0"
 description = "Privacy-first delivery safety and incident-response API"
 requires-python = ">=3.11"
 dependencies = ["fastapi==0.141.1", "uvicorn==0.53.0", "httpx==0.28.1"]
@@ -18,3 +18,6 @@ include = ["demafur*"]
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.setuptools.package-data]
+demafur = ["static/*"]
