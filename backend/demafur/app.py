@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from fastapi import FastAPI, Depends, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import ValidationError
 from .ai import summarize
 from .db import Database, timeline
@@ -41,9 +42,11 @@ def create_app(db_path=None, api_key=None, webhook_secret=None):
         app.add_middleware(CORSMiddleware, allow_origins=origins,
                            allow_methods=['GET', 'POST', 'DELETE'], allow_headers=['Authorization', 'Content-Type'])
 
-    def owner(authorization: Annotated[str | None, Header()] = None):
-        if not authorization or not hmac.compare_digest(authorization, f'Bearer {key}'):
-            raise HTTPException(401, 'Valid owner bearer token required')
+    bearer = HTTPBearer(auto_error=False, description='Paste the DEMAFUR_API_KEY value only; the browser adds Bearer.')
+
+    def owner(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]):
+        if not credentials or not hmac.compare_digest(credentials.credentials.encode(), key.encode()):
+            raise HTTPException(401, 'Valid owner bearer token required', headers={'WWW-Authenticate': 'Bearer'})
     auth = [Depends(owner)]
 
     def get_delivery(conn, delivery_id):

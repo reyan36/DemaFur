@@ -22,7 +22,7 @@ uvicorn demafur.app:create_app --factory --host 127.0.0.1 --port 8000
 
 Use two different secrets, each at least 24 characters. `.env.example` lists configuration; the application does not automatically load `.env`. Export variables through your shell or deployment secret manager. Keep keys server-side; this shared household token is suitable for a local prototype. A public web app needs individual login/session management and a backend-for-frontend so the long-lived owner token is not shipped in browser assets.
 
-Interactive API documentation: http://127.0.0.1:8000/docs. Supply `Authorization: Bearer <DEMAFUR_API_KEY>` in the header field for owner endpoints. OpenAPI is at `/openapi.json`, with a checked-in copy at `openapi.json`.
+Interactive API documentation: http://127.0.0.1:8000/docs. Click **Authorize** and paste only your `DEMAFUR_API_KEY` value. Swagger adds the Bearer prefix. Other API clients should send `Authorization: Bearer <DEMAFUR_API_KEY>`. OpenAPI is at `/openapi.json`, with a checked-in copy at `openapi.json`.
 
 In a second terminal with the **same exported secrets**, run:
 

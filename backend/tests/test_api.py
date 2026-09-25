@@ -254,3 +254,15 @@ def test_ai_payload_minimized(client, monkeypatch):
     monkeypatch.setattr('demafur.ai.httpx.post', provider)
     send(client, media_ref='private/recording.mp4')
     assert client.get('/v1/deliveries/d1/summary').json()['source'] == 'openai'
+
+
+def test_docs_bearer_auth_and_readiness(client):
+    schema = client.get('/openapi.json').json()
+    assert schema['components']['securitySchemes']['HTTPBearer']['scheme'] == 'bearer'
+    assert schema['paths']['/ready']['get']['security'] == [{'HTTPBearer': []}]
+    assert not any(p['name'].lower() == 'authorization' for p in schema['paths']['/ready']['get'].get('parameters', []))
+    assert client.get('/ready').status_code == 200
+    for value in ('', 'Bearer wrong-key', 'Basic abc', 'Bearer'):
+        response = client.get('/ready', headers={'Authorization': value})
+        assert response.status_code == 401
+        assert response.headers['www-authenticate'] == 'Bearer'
