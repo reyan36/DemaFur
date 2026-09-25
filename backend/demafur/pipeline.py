@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse
 from pydantic import Field
 from .models import StrictModel, Identifier, now
 from .ring import RingClient, IntegrationError
-from . import vision
+from . import vision, providers
 
 
 class LinkIn(StrictModel):
@@ -33,8 +33,8 @@ class WatchIn(StrictModel):
 class Pipeline:
     def __init__(self, db, apply_result):
         self.db, self.apply_result = db, apply_result
-        self.media_root = Path(os.getenv('DEMAFUR_MEDIA_DIR') or str(Path(db.path).parent / 'media')).resolve()
-        self.ring = RingClient(Path(db.path).parent / 'ring-private' / 'tokens.json')
+        self.media_root = Path(os.getenv('DEMAFUR_MEDIA_DIR') or str(db.data_dir / 'media')).resolve()
+        self.ring = RingClient(db.data_dir / 'ring-private' / 'tokens.json')
 
     def disabled(self, conn):
         row = conn.execute("SELECT value FROM integration_state WHERE key='ring_disabled'").fetchone()
@@ -46,7 +46,9 @@ class Pipeline:
             counts = {r['state']: r['n'] for r in conn.execute('SELECT state,COUNT(*) n FROM ring_jobs GROUP BY state')}
         return {'ring_configured': bool(self.ring.configured()), 'ring_disabled': disabled,
                 'vision_enabled': os.getenv('DEMAFUR_VISION_ENABLED') == 'true',
-                'vision_configured': bool(os.getenv('OPENAI_API_KEY') and os.getenv('OPENAI_VISION_MODEL')),
+                'vision_configured': providers.configuration(vision=True)['configured'],
+                'ai': providers.configuration(vision=True),
+                'database': 'postgresql' if self.db.postgres else 'sqlite_local',
                 'ffmpeg_available': bool(shutil.which(os.getenv('FFMPEG_PATH') or 'ffmpeg')),
                 'jobs': counts, 'hardware_actions': 'simulated',
                 'onboarding': 'ring_driven_nonce_linking'}
@@ -90,7 +92,7 @@ class Pipeline:
                 if linked and occurred.timestamp() < float(linked['value']):
                     return {'accepted': True, 'ignored': 'lifecycle_event_before_latest_link'}
             if kind == 'app_integration_removed':
-                conn.execute("INSERT OR REPLACE INTO integration_state VALUES('ring_disabled','true')")
+                conn.execute("INSERT INTO integration_state VALUES('ring_disabled','true') ON CONFLICT(key) DO UPDATE SET value=excluded.value")
                 conn.execute("UPDATE ring_jobs SET state='cancelled',claim=NULL WHERE state IN ('queued','retry','processing')")
                 conn.execute('DELETE FROM ring_routes')
                 self.ring.path.unlink(missing_ok=True)
@@ -118,7 +120,7 @@ class Pipeline:
                     if old['fingerprint'] != fingerprint:
                         raise HTTPException(409, 'Ring event ID reused with different data')
                     continue
-                active = conn.execute("SELECT COUNT(*) FROM ring_jobs WHERE state IN ('queued','retry','processing')").fetchone()[0]
+                active = conn.execute("SELECT COUNT(*) AS n FROM ring_jobs WHERE state IN ('queued','retry','processing')").fetchone()['n']
                 if active >= 100:
                     raise HTTPException(503, 'Analysis queue is full; retry later')
                 conn.execute('''INSERT INTO ring_jobs(id,delivery_id,camera_id,device_id,component_id,
@@ -132,7 +134,7 @@ class Pipeline:
                     'occurred_at': occurred.isoformat(), 'confidence': 1,
                     'observations': {'duration_seconds': 0, 'looking_around': False},
                     'media_ref': None, 'provenance': 'ring_webhook'}
-                count = conn.execute('SELECT COUNT(*) FROM events WHERE delivery_id=?', (route['delivery_id'],)).fetchone()[0]
+                count = conn.execute('SELECT COUNT(*) AS n FROM events WHERE delivery_id=?', (route['delivery_id'],)).fetchone()['n']
                 if count >= 2000:
                     raise HTTPException(409, 'Delivery event limit reached')
                 conn.execute('INSERT INTO events VALUES(?,?,?,?)',
@@ -175,7 +177,7 @@ class Pipeline:
             require_active_claim()
             if os.getenv('DEMAFUR_VISION_ENABLED') != 'true':
                 raise IntegrationError('vision_not_enabled')
-            if not os.getenv('OPENAI_API_KEY') or not os.getenv('OPENAI_VISION_MODEL'):
+            if not providers.configuration(vision=True)['configured']:
                 raise IntegrationError('vision_not_configured')
             if not shutil.which(os.getenv('FFMPEG_PATH') or 'ffmpeg'):
                 raise IntegrationError('ffmpeg_not_installed')
@@ -200,7 +202,7 @@ class Pipeline:
                     conn.execute('UPDATE ring_jobs SET media=?,analysis=? WHERE id=? AND claim=?',
                                  (json.dumps(media), json.dumps(analysis), job['id'], claim))
             with self.db.connect() as conn:
-                current = conn.execute('SELECT * FROM ring_jobs WHERE id=? AND claim=? AND state="processing"', (job['id'], claim)).fetchone()
+                current = conn.execute("SELECT * FROM ring_jobs WHERE id=? AND claim=? AND state='processing'", (job['id'], claim)).fetchone()
                 if not current or self.disabled(conn):
                     path.unlink(missing_ok=True)
                     return {'processed': False, 'reason': 'cancelled_or_claim_lost'}
@@ -264,8 +266,8 @@ def routes(pipeline, owner):
         except IntegrationError as error:
             raise HTTPException(400, error.code)
         with pipeline.db.connect() as conn:
-            conn.execute("INSERT OR REPLACE INTO integration_state VALUES('ring_disabled','false')")
-            conn.execute("INSERT OR REPLACE INTO integration_state VALUES('ring_linked_at',?)", (str(time.time()),))
+            conn.execute("INSERT INTO integration_state VALUES('ring_disabled','false') ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+            conn.execute("INSERT INTO integration_state VALUES('ring_linked_at',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(time.time()),))
         return {'linked': True}
 
     @router.get('/v1/integrations/status', dependencies=auth)
@@ -290,8 +292,8 @@ def routes(pipeline, owner):
         except IntegrationError as error:
             raise HTTPException(503, error.code)
         with pipeline.db.connect() as conn:
-            conn.execute("INSERT OR REPLACE INTO integration_state VALUES('ring_disabled','false')")
-            conn.execute("INSERT OR REPLACE INTO integration_state VALUES('ring_linked_at',?)", (str(time.time()),))
+            conn.execute("INSERT INTO integration_state VALUES('ring_disabled','false') ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+            conn.execute("INSERT INTO integration_state VALUES('ring_linked_at',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(time.time()),))
         return {'ring_disabled': False, 'watches_must_be_recreated': True}
 
     @router.post('/v1/integrations/ring/watch', dependencies=auth, status_code=201)
@@ -308,8 +310,8 @@ def routes(pipeline, owner):
             route = conn.execute('SELECT * FROM ring_routes WHERE device_id=? AND component_id=?', (data.device_id, data.component_id)).fetchone()
             if route and route['delivery_id'] != data.delivery_id:
                 raise HTTPException(409, 'Stop the existing watch before tracking another parcel on this camera')
-            conn.execute('INSERT OR IGNORE INTO deliveries VALUES(?,?,?,NULL,NULL)', (data.delivery_id, camera, now().isoformat()))
-            conn.execute('INSERT OR IGNORE INTO ring_routes VALUES(?,?,?)', (data.device_id, data.component_id, data.delivery_id))
+            conn.execute('INSERT INTO deliveries VALUES(?,?,?,NULL,NULL) ON CONFLICT DO NOTHING', (data.delivery_id, camera, now().isoformat()))
+            conn.execute('INSERT INTO ring_routes VALUES(?,?,?) ON CONFLICT DO NOTHING', (data.device_id, data.component_id, data.delivery_id))
         return {'delivery_id': data.delivery_id, 'camera_id': camera, 'state': 'watching'}
 
     @router.delete('/v1/integrations/ring/watch/{delivery_id}', dependencies=auth)

@@ -22,6 +22,7 @@ ACCOUNT = 'ava1.ring.account.test'
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
+    monkeypatch.setenv('AI_PROVIDER', 'openai')
     for name, value in {'RING_CLIENT_ID': 'client', 'RING_CLIENT_SECRET': 'client-secret',
         'RING_ACCOUNT_ID': ACCOUNT, 'RING_HMAC_SIGNING_KEY': SIGNING, 'RING_REFRESH_TOKEN': 'refresh-secret',
         'DEMAFUR_VISION_ENABLED': 'true', 'OPENAI_API_KEY': 'vision-secret', 'OPENAI_VISION_MODEL': 'test-model',

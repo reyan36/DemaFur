@@ -48,20 +48,49 @@ CREATE TABLE IF NOT EXISTS audit (
 '''
 
 
+class PostgresConnection:
+    """Only adapts placeholders in our static SQL; values remain driver-bound."""
+    def __init__(self, connection):
+        self.connection = connection
+
+    def execute(self, sql, params=()):
+        return self.connection.execute(sql.replace('?', '%s'), params)
+
+
 class Database:
-    def __init__(self, path):
-        self.path = str(path)
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        with self.connect() as conn:
-            conn.executescript(SCHEMA)
+    def __init__(self, source):
+        import os
+        self.postgres = str(source).startswith(('postgresql://', 'postgres://'))
+        self.source = str(source)
+        # Files must never be derived from a database URL containing credentials.
+        self.data_dir = Path(os.getenv('DEMAFUR_DATA_DIR') or ('./data' if self.postgres else str(Path(source).parent)))
+        if self.postgres:
+            with self.connect() as conn:
+                version = conn.execute('SELECT version FROM schema_migrations WHERE version=1').fetchone()
+                if not version:
+                    raise RuntimeError('Database migrations are missing; run python -m demafur.migrate')
+        else:
+            self.path = str(source)
+            Path(source).parent.mkdir(parents=True, exist_ok=True)
+            with self.connect() as conn:
+                conn.executescript(SCHEMA)
 
     @contextmanager
     def connect(self, timeout=10):
+        if self.postgres:
+            from .migrate import postgres_connection
+            with postgres_connection(self.source) as conn:
+                conn.execute("SELECT set_config('lock_timeout', %s, true)", (str(int(timeout*1000))+'ms',))
+                conn.execute('SET LOCAL search_path TO demafur, pg_catalog')
+                # Transaction-scoped row lock keeps existing single-household workflows
+                # atomic across API processes. Never held during provider requests.
+                conn.execute('SELECT id FROM workflow_lock WHERE id=1 FOR UPDATE')
+                yield PostgresConnection(conn)
+            return
         conn = sqlite3.connect(self.path, timeout=timeout)
         conn.row_factory = sqlite3.Row
         conn.execute('PRAGMA foreign_keys=ON')
         try:
-            # Serialize read-modify-write workflows, including concurrent retries.
             conn.execute('BEGIN IMMEDIATE')
             yield conn
             conn.commit()

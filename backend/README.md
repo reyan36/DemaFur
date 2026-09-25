@@ -1,9 +1,8 @@
 # DemaFur backend
 
-**Version 0.2:** Ring linking/webhooks, recorded-video retrieval, sampled-frame AI analysis, and a household review page are implemented. Start with [LIVE_SETUP.md](LIVE_SETUP.md). Provider calls are covered by mocked tests; live Ring/OpenAI and visual accuracy have not yet been validated. Alexa and physical actions remain simulated.
+**Version 0.3:** Supabase PostgreSQL migrations, AWS Bedrock text/vision analysis and opt-in Groq fallback are implemented alongside the delivery workflow and Ring adapter. Start with [STACK_SETUP.md](STACK_SETUP.md), then [LIVE_SETUP.md](LIVE_SETUP.md). Live Supabase, AWS and Ring validation is still required. Alexa and physical actions remain simulated.
 
-
-Runnable FastAPI + SQLite MVP for a single household. Connect your web frontend to the REST API. It groups camera observations into delivery timelines, explains heuristic risks, supports trusted pickups, asks for owner confirmation, records action approvals, and exports evidence drafts.
+FastAPI backend for a single-household staging MVP. The planned Next.js/Vercel dashboard calls FastAPI on Railway; PostgreSQL lives on Supabase Cloud. The included `/review` page is a staging console, not the Next.js dashboard.
 
 The supplied diagram is treated as design reference. Its identity-tracking label is intentionally excluded in favour of the written privacy requirements. No facial recognition, person IDs, demographic inference, or continuous video monitoring is implemented.
 
@@ -17,6 +16,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 export DEMAFUR_API_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
 export DEMAFUR_WEBHOOK_SECRET="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+export DEMAFUR_ALLOW_SQLITE=true  # local demo only; production uses DATABASE_URL
 uvicorn demafur.app:create_app --factory --host 127.0.0.1 --port 8000
 ```
 
@@ -120,7 +120,7 @@ Run `python worker.py` beside the server, with the same exported owner key, for 
 
 ### Optional AI
 
-Set both `OPENAI_API_KEY` and `OPENAI_MODEL` to enable text-only narration through the [OpenAI Responses API](https://developers.openai.com/api/docs/guides/text). Without them, everything runs locally with deterministic summaries. Provider failures fall back to a local summary. AI has no tools and cannot approve actions or change risk scores. The optional text narrator sends bounded event facts and policy conclusions. The separately enabled vision pipeline sends sampled camera images, as explained in LIVE_SETUP.md. `store` is false; this is not a claim of zero provider retention. Narration is explicitly marked for review.
+Bedrock is the default provider. Configure region and model IDs as described in STACK_SETUP.md. Text failures return a labelled local policy summary. Visual analysis requires explicit opt-in; Groq fallback is separately opt-in and only handles transient Bedrock failures. Model output is validated and cannot approve physical actions. Legacy OpenAI support requires `AI_PROVIDER=openai`.
 
 The review interface is available at `/review`. The assistant accepts `package_status`, `today_summary`, and `safety_status`, optionally scoped by `delivery_id`. Day boundaries use UTC. These are frontend/voice-bridge intents; native Alexa request verification and account linking remain to be connected.
 
@@ -128,7 +128,7 @@ The review interface is available at `/review`. The assistant accepts `package_s
 
 Evidence ZIPs include ordered observations, uncertainty, media references, report and neighbour-post drafts, and file checksums. Checksums verify exported file consistency, not authenticity of source footage. The backend does not fetch arbitrary URLs, identify people, post to neighbours, or submit police reports. It can now download authorized Ring event windows; it does not identify an optimal sub-clip automatically. The Ring pipeline includes downloaded event windows in ZIP exports (up to 64 MiB total); additional clips are individually downloadable from the review page. Missing recordings are never fabricated.
 
-Default retention is 30 days, applied by maintenance to deliveries whose creation and latest observation are older than the cutoff, including incidents. Set `DEMAFUR_RETENTION_DAYS` to override. Export needed evidence before expiry. Cascade deletion removes events, windows, actions, evidence, and audit rows from the live database; SQLite pages, backups, and external recordings require separate storage lifecycle controls. Protect the database volume, backups, and credentials.
+Default retention is 30 days, applied by maintenance to deliveries whose creation and latest observation are older than the cutoff, including incidents. Set `DEMAFUR_RETENTION_DAYS` to override. Export needed evidence before expiry. Cascade deletion removes events, windows, actions, evidence, and audit rows from the live database; database backups, and external recordings require separate storage lifecycle controls. Protect the database volume, backups, and credentials.
 
 ## Verification
 
@@ -143,4 +143,4 @@ Tests cover authentication, signed webhooks, concurrent retries, timestamp valid
 
 Dockerfile included; build with `docker build -t demafur .`, provide credentials through your platform, and mount a writable volume at `/data` for UID 10001. The container build has not been verified here.
 
-This is a working single-household staging MVP, not a public multi-tenant deployment. Before external launch, add user accounts and household scoping, TLS and rate/body limits at the gateway, monitored jobs, secret rotation, migration tooling and backups, and real provider adapters with delivery receipts and retry handling. SQLite serializes writes; use PostgreSQL and a worker queue for larger deployments. Ring registration, recording permissions, provider credentials, and real camera validation are required to activate the new pipeline. Native Alexa, lights, actual push delivery and long-term personalized learning remain outstanding.
+This is a working single-household staging MVP, not a public multi-tenant deployment. Before external launch, add user accounts and household scoping, TLS and rate/body limits at the gateway, monitored jobs, secret rotation, backup/restore operations, and real provider adapters with delivery receipts and retry handling. PostgreSQL currently serializes workflow writes with a transaction lock; larger deployments need household-level locks and a scalable worker queue. Ring registration, recording permissions, provider credentials, and real camera validation are required to activate the new pipeline. Native Alexa, lights, actual push delivery and long-term personalized learning remain outstanding.

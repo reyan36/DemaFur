@@ -3,7 +3,7 @@ services:
     build: .
     env_file: .env
     environment:
-      DEMAFUR_DB: /data/demafur.sqlite3
+      DEMAFUR_DATA_DIR: /data
       DEMAFUR_MEDIA_DIR: /data/media
     ports:
       - "127.0.0.1:8000:8000"

@@ -28,8 +28,13 @@ def create_app(db_path=None, api_key=None, webhook_secret=None):
         raise RuntimeError('Set distinct DEMAFUR_API_KEY and DEMAFUR_WEBHOOK_SECRET (at least 24 characters each).')
     if key == secret:
         raise RuntimeError('Owner and webhook credentials must differ.')
-    db = Database(db_path or os.getenv('DEMAFUR_DB', './data/demafur.sqlite3'))
-    app = FastAPI(title='DemaFur Safety Agent', version='0.2.0',
+    source = db_path or os.getenv('DATABASE_URL')
+    if not source and os.getenv('DEMAFUR_ALLOW_SQLITE') == 'true':
+        source = os.getenv('DEMAFUR_DB') or './data/demafur.sqlite3'
+    if not source:
+        raise RuntimeError('Set DATABASE_URL for Supabase PostgreSQL. SQLite requires explicit DEMAFUR_ALLOW_SQLITE=true for local demos.')
+    db = Database(source)
+    app = FastAPI(title='DemaFur Safety Agent', version='0.3.0',
                   description='Single-household backend. Behaviour-based delivery safety; no identity tracking. Hardware adapters are simulated.')
     origins = [o.strip() for o in os.getenv('DEMAFUR_CORS_ORIGINS', '').split(',') if o.strip()]
     if origins:
@@ -71,7 +76,7 @@ def create_app(db_path=None, api_key=None, webhook_secret=None):
         for kind in desired:
             conn.execute("UPDATE actions SET status=?,reason=? WHERE delivery_id=? AND kind=? AND status='cancelled'",
                          ('queued' if kind == 'notify_owner' else 'pending_approval', ' '.join(view['risk']['reasons']), view['id'], kind))
-            conn.execute('INSERT OR IGNORE INTO actions VALUES(?,?,?,?,?,?)',
+            conn.execute('INSERT INTO actions VALUES(?,?,?,?,?,?) ON CONFLICT DO NOTHING',
                          (str(uuid.uuid4()), view['id'], kind,
                           'queued' if kind == 'notify_owner' else 'pending_approval',
                           ' '.join(view['risk']['reasons']), now().isoformat()))
@@ -89,13 +94,22 @@ def create_app(db_path=None, api_key=None, webhook_secret=None):
                   'neighbours_draft': 'A delivery was reported missing from my property. Please contact me privately if you have relevant information. No person has been identified.',
                   'review_required': True, 'submitted': False,
                   'clip_extraction': 'not_configured'}
-        conn.execute('INSERT OR REPLACE INTO evidence VALUES(?,?,?)',
+        conn.execute('INSERT INTO evidence VALUES(?,?,?) ON CONFLICT(delivery_id) DO UPDATE SET created_at=excluded.created_at,payload=excluded.payload',
                      (view['id'], bundle['created_at'], json.dumps(bundle)))
         return bundle
 
     @app.get('/health')
     def health():
         return {'status': 'ok', 'service': 'DemaFur', 'hardware_mode': 'simulated'}
+
+    @app.get('/ready', dependencies=auth)
+    def ready():
+        try:
+            with db.connect(timeout=1) as conn:
+                conn.execute('SELECT 1').fetchone()
+        except Exception:
+            raise HTTPException(503, 'Database unavailable') from None
+        return {'status': 'ready', 'database': 'postgresql' if db.postgres else 'sqlite_local'}
 
     @app.post('/v1/events', dependencies=auth, status_code=201)
     def event(event: EventIn, response: Response):
@@ -115,9 +129,9 @@ def create_app(db_path=None, api_key=None, webhook_secret=None):
             delivery = conn.execute('SELECT * FROM deliveries WHERE id=?', (event.delivery_id,)).fetchone()
             if delivery and delivery['camera_id'] != event.camera_id:
                 raise HTTPException(409, 'Delivery belongs to another camera')
-            if conn.execute('SELECT COUNT(*) FROM events WHERE delivery_id=?', (event.delivery_id,)).fetchone()[0] >= 2000:
+            if conn.execute('SELECT COUNT(*) AS n FROM events WHERE delivery_id=?', (event.delivery_id,)).fetchone()['n'] >= 2000:
                 raise HTTPException(409, 'Delivery event limit reached')
-            conn.execute('INSERT OR IGNORE INTO deliveries VALUES(?,?,?,NULL,NULL)',
+            conn.execute('INSERT INTO deliveries VALUES(?,?,?,NULL,NULL) ON CONFLICT DO NOTHING',
                          (event.delivery_id, event.camera_id, now().isoformat()))
             conn.execute('INSERT INTO events VALUES(?,?,?,?)',
                          (event.event_id, event.delivery_id, payload['occurred_at'], canonical))
@@ -185,7 +199,7 @@ def create_app(db_path=None, api_key=None, webhook_secret=None):
                 raise HTTPException(409, 'Cannot retroactively authorize pickup; use owner confirmation')
             record = {'id': str(uuid.uuid4()), 'delivery_id': data.delivery_id,
                       'starts_at': start.isoformat(), 'ends_at': end.isoformat(), 'created_at': now().isoformat(), 'revoked': 0}
-            conn.execute('INSERT INTO pickups VALUES(:id,:delivery_id,:starts_at,:ends_at,:created_at,:revoked)', record)
+            conn.execute('INSERT INTO pickups VALUES(?,?,?,?,?,?)', tuple(record[k] for k in ('id','delivery_id','starts_at','ends_at','created_at','revoked')))
             audit(conn, data.delivery_id, 'pickup_window_created')
             return record
 
@@ -243,7 +257,7 @@ def create_app(db_path=None, api_key=None, webhook_secret=None):
     @app.post('/v1/actions/dispatch', dependencies=auth)
     def dispatch():
         with db.connect() as conn:
-            for row in conn.execute('SELECT DISTINCT delivery_id FROM actions WHERE status="queued"').fetchall():
+            for row in conn.execute("SELECT DISTINCT delivery_id FROM actions WHERE status='queued'").fetchall():
                 sync_actions(conn, snapshot(conn, row['delivery_id']))
             rows = conn.execute("SELECT * FROM actions WHERE status='queued'").fetchall()
             for row in rows:
@@ -364,7 +378,7 @@ def create_app(db_path=None, api_key=None, webhook_secret=None):
                 and abs((datetime.fromisoformat(e['occurred_at']) - datetime.fromisoformat(payload['occurred_at'])).total_seconds()) <= 5
                 for e in existing):
                 continue
-            conn.execute('INSERT OR IGNORE INTO events VALUES(?,?,?,?)',
+            conn.execute('INSERT INTO events VALUES(?,?,?,?) ON CONFLICT DO NOTHING',
                 (payload['event_id'], job['delivery_id'], payload['occurred_at'], json.dumps(payload)))
         view = snapshot(conn, job['delivery_id'])
         sync_actions(conn, view)

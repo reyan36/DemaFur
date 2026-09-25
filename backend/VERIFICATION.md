@@ -1,13 +1,9 @@
-# Verification — version 0.2
+# Verification — version 0.3
 
-- Python 3.14.5, FastAPI 0.141.1, SQLite persistence.
-- `python -m pytest -q`: **49 passed**, zero failures.
-- One upstream Starlette test-client deprecation warning concerning httpx.
-- `node --check demafur/static/review.js`: passed.
-- `git diff --check`: passed.
+Local Python 3.14: **62 passed, 2 skipped**. The skipped tests require a real, dedicated PostgreSQL database. Existing SQLite workflow regression tests and mocked Ring/provider tests pass. One upstream Starlette/httpx deprecation warning remains.
 
-The new tests exercise native Ring signatures, household scope, duplicate deliveries, immediate timeline ingestion, camera routing, queued work, owner-only account linking, nonce expiry/replay, POST/PATCH linking steps, token rotation, recording request format, partial recording metadata, model schema/frame validation, refusals, retry states, disconnection during processing, confirmation, authenticated clip access, ZIP clip inclusion and hashes, and recording deletion.
+New tests cover PostgreSQL parameter binding and explicit configuration, Bedrock Converse text/image/tool requests, provider attribution, schema/frame validation, transient-only Groq fallback, credential failures, refusals and reduced-image fallback. GitHub Actions includes a PostgreSQL 16 service to run real migration/workflow/concurrency tests once uploaded. That workflow has not been executed here.
 
-Ring and OpenAI HTTP responses are mocked. The end-to-end integration test uses mock recording bytes and replaces frame extraction; it does **not** establish real MP4 decoding or visual model accuracy. UI assets and security headers are verified through the HTTP test client, but a rendered-browser interaction pass has not been performed.
+No Supabase, AWS, Groq or Ring live credentials were supplied. PostgreSQL migrations, SDK execution against AWS, real camera footage/FFmpeg decoding, model accuracy, Docker builds and Railway/Vercel deployments remain unverified. Provider tests use mocked responses. The psycopg and boto3 dependencies could not be installed in this network-restricted environment. No existing SQLite records have been migrated to Supabase.
 
-No Ring developer app, camera credentials, or OpenAI API account was supplied. Real provider calls, actual camera footage, FFmpeg execution, public HTTPS callbacks, and Docker/Compose builds remain unverified. The original version 0.1 synthetic demo was previously exercised on a localhost server; that is not a live-provider validation of this update.
+The backend is a single-household staging implementation. Alexa, lights and notifications remain simulated. Next.js dashboard implementation and production multi-household authorization are outstanding.

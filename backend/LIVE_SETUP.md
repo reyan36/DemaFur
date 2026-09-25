@@ -1,6 +1,6 @@
 # Connect your first real delivery
 
-The code for Ring event ingestion, recorded-clip retrieval, sampled-frame vision analysis, web review and owner confirmation is now implemented. It has been tested with mocked Ring/OpenAI responses. **No live Ring account or OpenAI API account was available during development, so end-to-end hardware validation is still required.**
+First complete [STACK_SETUP.md](STACK_SETUP.md) for Supabase and AWS. Ring ingestion and AI calls have been tested with mocked responses; live hardware and provider validation is still required.
 
 ## 1. Prepare local configuration
 
@@ -41,26 +41,22 @@ Ring redirects the homeowner to `/review?nonce=...&time=...`. Sign in with your 
 
 For an account that is already linked through your existing integration, you may instead supply `RING_ACCOUNT_ID` and `RING_REFRESH_TOKEN`. The adapter refreshes and rotates tokens and verifies the token's account through `/v1/users/me`. Leave both blank for the native flow above.
 
-Token files are kept beside the database under `ring-private/`, with directory permissions 0700 and file permissions 0600. They are **not application-encrypted**; use an encrypted persistent volume or replace the store with your deployment's secret manager before public production use. Run a single API process: file-token refresh coordination currently uses an in-process lock.
+Token files are kept under DEMAFUR_DATA_DIR in `ring-private/`, with directory permissions 0700 and file permissions 0600. They are **not application-encrypted**; use an encrypted persistent volume or replace the store with your deployment's secret manager before public production use. Run a single API process: file-token refresh coordination currently uses an in-process lock.
 
 ## 3. Configure visual analysis
 
-Create an OpenAI API project/key and configure API billing in your own account. A ChatGPT login alone does not configure this backend.
+Configure `AI_PROVIDER=bedrock`, `AWS_REGION`, `BEDROCK_MODEL_ID` and `BEDROCK_VISION_MODEL_ID`, with AWS credentials available to the backend. Choose a vision model supporting Converse image inputs and forced tool output. Set `DEMAFUR_VISION_ENABLED=true` only when ready to send sampled event images to the provider. Optional Groq fallback sends a maximum of three selected frames and reports reduced temporal coverage.
 
-```text
-OPENAI_API_KEY=...
-OPENAI_VISION_MODEL=<an image-input model available to your API project>
-DEMAFUR_VISION_ENABLED=true
-```
-
-`OPENAI_MODEL` is the separate optional text-summary model. Vision is disabled by default because enabling it sends sampled camera images to OpenAI and incurs API usage. It sends no audio, uses `store: false`, and performs no face recognition. Camera images may still contain personal information; “no identification” does not mean the frames are anonymized.
+No audio or facial identification is used. Images may still contain personal information; they are not anonymized. Provider retention terms apply.
 
 ## 4. Start the server and worker
 
 Docker option (Docker build has not been verified in this development session):
 
 ```sh
-docker compose up --build
+docker compose build
+docker compose run --rm api python -m demafur.migrate
+docker compose up
 ```
 
 The image installs FFmpeg. The API listens locally at http://127.0.0.1:8000 and the worker calls maintenance, analysis, and simulated-action dispatch every 15 seconds. Configure your HTTPS gateway separately for Ring callbacks. Apply TLS and gateway request/rate limits, especially to the token callback. Do not expose an unprotected development server publicly.

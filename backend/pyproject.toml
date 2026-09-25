@@ -1,9 +1,9 @@
 [project]
 name = "demafur-backend"
-version = "0.2.0"
+version = "0.3.0"
 description = "Privacy-first delivery safety and incident-response API"
 requires-python = ">=3.11"
-dependencies = ["fastapi==0.141.1", "uvicorn==0.53.0", "httpx==0.28.1"]
+dependencies = ["fastapi==0.141.1", "uvicorn==0.53.0", "httpx==0.28.1", "psycopg[binary]>=3.2,<4", "boto3>=1.40,<2"]
 
 [project.optional-dependencies]
 test = ["pytest==9.1.1"]
@@ -20,4 +20,4 @@ pythonpath = ["."]
 testpaths = ["tests"]
 
 [tool.setuptools.package-data]
-demafur = ["static/*"]
+demafur = ["static/*", "migrations/*.sql"]
