@@ -18,6 +18,7 @@ SECRET = 'bridge-test-secret-123456789012345'
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
+    monkeypatch.setenv('AI_PROVIDER', 'openai')
     monkeypatch.delenv('OPENAI_API_KEY', raising=False)
     app = create_app(tmp_path / 'test.db', KEY, SECRET)
     with TestClient(app, headers={'Authorization': f'Bearer {KEY}'}) as c:

@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DemaFur · Delivery review</title><link rel="stylesheet" href="/review-assets/review.css"><script src="/review-assets/review.js" defer></script></head>
+<body><header><a href="/review">DemaFur</a><span>Delivery review</span><button id="logout" hidden>Sign out</button></header>
+<main>
+<section id="login-panel"><p class="eyebrow">Household workspace</p><h1>Know what happened.<br>Decide what happens next.</h1><p>Review delivery observations and confirm a pickup. Your decisions remain yours.</p>
+<form id="login"><label for="owner-key">Household access key</label><input id="owner-key" type="password" autocomplete="current-password" required><p class="hint">For this single-household prototype, use the key configured by your team. It stays in memory until you sign out or reload.</p><button type="submit">Open workspace</button></form></section>
+<p id="notice" role="status" aria-live="polite"></p>
+<div id="workspace" hidden>
+<section class="heading"><div><p class="eyebrow">Overview</p><h1>Your deliveries</h1></div><button id="refresh">Refresh</button></section>
+<section aria-labelledby="connection-heading"><h2 id="connection-heading">Connection status</h2><p id="connection">Checking integrations…</p><button id="ring-link" hidden>Complete Ring connection</button><p class="hint">Device actions remain simulated. AI observations are estimates from sampled frames, not a determination of theft.</p></section>
+<div class="columns"><section><h2>Delivery timeline</h2><div id="deliveries">Loading deliveries…</div></section>
+<section><h2>Watch a delivery</h2><p>Track one parcel per camera view. Stop the previous watch before starting another.</p><button id="load-devices">Load shared Ring cameras</button>
+<form id="watch"><label for="device">Camera</label><select id="device" required><option value="">Load cameras first</option></select><label for="component">Camera module ID</label><input id="component" placeholder="Required for multi-camera devices" maxlength="100"><label for="delivery-name">Delivery reference</label><input id="delivery-name" required pattern="[a-zA-Z0-9_-]{1,100}" placeholder="parcel-001" maxlength="100"><button type="submit">Start watching</button></form>
+<details><summary>Shared camera capabilities</summary><pre id="capabilities">No cameras loaded.</pre></details></section></div>
+<section id="detail" hidden><p class="eyebrow">Delivery details</p><h2 id="detail-title"></h2><p id="risk"></p><ul id="reasons"></ul><h3>Observed events</h3><ol id="timeline"></ol>
+<div class="controls"><button data-outcome="expected">Pickup was expected</button><button data-outcome="unsure">I'm not sure</button><button data-outcome="missing">Report package missing</button><button id="stop-watch">Stop watching</button><button id="evidence">Download evidence</button></div>
+<p class="hint">“Report package missing” creates a reviewable evidence bundle. It does not contact police or neighbours.</p>
+<form id="pickup"><h3>Arrange a trusted pickup</h3><label for="starts">Starts (your local time)</label><input id="starts" type="datetime-local" required><label for="ends">Ends (your local time)</label><input id="ends" type="datetime-local" required><button type="submit">Save pickup window</button></form></section>
+<section><h2>Footage analysis</h2><p class="hint">The worker processes queued clips. Failed or incomplete analysis is shown here rather than treated as “all clear.”</p><div id="jobs">Loading analysis…</div></section>
+</div></main><footer>Behaviour over identity. Owner confirmation over assumptions.</footer></body></html>

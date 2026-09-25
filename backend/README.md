@@ -1,6 +1,8 @@
 # DemaFur backend
 
-Runnable FastAPI + SQLite MVP for a single household. Connect your web frontend to the REST API. It groups camera observations into delivery timelines, explains heuristic risks, supports trusted pickups, asks for owner confirmation, records action approvals, and exports evidence drafts.
+**Version 0.3:** Supabase PostgreSQL migrations, AWS Bedrock text/vision analysis and opt-in Groq fallback are implemented alongside the delivery workflow and Ring adapter. Start with [STACK_SETUP.md](STACK_SETUP.md), then [LIVE_SETUP.md](LIVE_SETUP.md). Live Supabase, AWS and Ring validation is still required. Alexa and physical actions remain simulated.
+
+FastAPI backend for a single-household staging MVP. The planned Next.js/Vercel dashboard calls FastAPI on Railway; PostgreSQL lives on Supabase Cloud. The included `/review` page is a staging console, not the Next.js dashboard.
 
 The supplied diagram is treated as design reference. Its identity-tracking label is intentionally excluded in favour of the written privacy requirements. No facial recognition, person IDs, demographic inference, or continuous video monitoring is implemented.
 
@@ -14,6 +16,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 export DEMAFUR_API_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
 export DEMAFUR_WEBHOOK_SECRET="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+export DEMAFUR_ALLOW_SQLITE=true  # local demo only; production uses DATABASE_URL
 uvicorn demafur.app:create_app --factory --host 127.0.0.1 --port 8000
 ```
 
@@ -68,9 +71,9 @@ Example event (use a current timestamp):
 }
 ```
 
-Event kinds: `package_delivered`, `motion`, `person_approached`, `person_lingering`, `package_removed`, `entered_home`, `doorbell`. The bridge supplies observations; this API does not extract behaviour from pixels. Entering home is preserved as context but does not prove a pickup was authorized. No unstructured camera text is accepted. Unknown fields are rejected.
+Event kinds: `package_delivered`, `motion`, `person_approached`, `person_lingering`, `package_removed`, `entered_home`, `doorbell`. The original event endpoint accepts bridge-supplied observations. The Ring pipeline now derives candidate observations from sampled video frames when explicitly configured. Entering home is preserved as context but does not prove a pickup was authorized. No unstructured camera text is accepted. Unknown fields are rejected.
 
-Assign one stable delivery ID per parcel lifecycle and one globally unique event ID per source event. The bridge must correlate observations with a parcel; automatic multi-package camera correlation is not implemented. Repeated identical events return 200 without duplicate side effects; reuse with changed content returns 409. Events may arrive out of order and are displayed by occurrence time; naive timestamps and events over five minutes in the future are rejected. Up to 2,000 observations per delivery are supported.
+Assign one stable delivery ID per parcel lifecycle and one globally unique event ID per source event. The bridge must correlate observations with a parcel; automatic multi-package camera correlation is not implemented. Ring watches explicitly associate one camera view with one delivery. Repeated identical events return 200 without duplicate side effects; reuse with changed content returns 409. Events may arrive out of order and are displayed by occurrence time; naive timestamps and events over five minutes in the future are rejected. Up to 2,000 observations per delivery are supported.
 
 ### Signed bridge
 
@@ -113,19 +116,19 @@ For removal incidents, behaviour is evaluated in the ten minutes preceding remov
 
 Notifications enter a durable outbox at score 25. Lights and warning messages require explicit owner approval at score 50. Dispatch rechecks current relevance and labels outcomes `simulated`; it never claims hardware success. Decisions already rejected or simulated are not automatically replayed for the same parcel. Outdated queued actions are cancelled when the state changes.
 
-Run `python worker.py` beside the server, with the same exported owner key, for a 60-second maintenance/dispatch loop. Alternatively, run `POST /v1/maintenance` periodically (for example, once per minute from your deployment scheduler) to enqueue unattended-package reminders and enforce retention without new camera events. Run `POST /v1/actions/dispatch` to consume the simulated outbox. Neither endpoint sends notifications to real devices.
+Run `python worker.py` beside the server, with the same exported owner key, for a maintenance/analysis/dispatch loop (60 seconds by default, 15 seconds in Compose). Alternatively, run `POST /v1/maintenance` periodically (for example, once per minute from your deployment scheduler) to enqueue unattended-package reminders and enforce retention without new camera events. Run `POST /v1/actions/dispatch` to consume the simulated outbox. Neither endpoint sends notifications to real devices.
 
 ### Optional AI
 
-Set both `OPENAI_API_KEY` and `OPENAI_MODEL` to enable text-only narration through the [OpenAI Responses API](https://developers.openai.com/api/docs/guides/text). Without them, everything runs locally with deterministic summaries. Provider failures fall back to a local summary. AI has no tools and cannot approve actions or change risk scores. Only bounded event facts and policy conclusions are sent; no images or camera IDs. `store` is false; this is not a claim of zero provider retention. Narration is explicitly marked for review.
+Bedrock is the default provider. Configure region and model IDs as described in STACK_SETUP.md. Text failures return a labelled local policy summary. Visual analysis requires explicit opt-in; Groq fallback is separately opt-in and only handles transient Bedrock failures. Model output is validated and cannot approve physical actions. Legacy OpenAI support requires `AI_PROVIDER=openai`.
 
-The assistant accepts `package_status`, `today_summary`, and `safety_status`, optionally scoped by `delivery_id`. Day boundaries use UTC. These are frontend/voice-bridge intents; native Alexa request verification and account linking remain to be connected.
+The review interface is available at `/review`. The assistant accepts `package_status`, `today_summary`, and `safety_status`, optionally scoped by `delivery_id`. Day boundaries use UTC. These are frontend/voice-bridge intents; native Alexa request verification and account linking remain to be connected.
 
 ## Evidence and privacy
 
-Evidence ZIPs include ordered observations, uncertainty, media references, report and neighbour-post drafts, and file checksums. Checksums verify exported file consistency, not authenticity of source footage. The backend does not fetch arbitrary URLs, cut video clips, identify people, post to neighbours, or submit police reports. Connect an authorized recording store and clip worker for actual media export.
+Evidence ZIPs include ordered observations, uncertainty, media references, report and neighbour-post drafts, and file checksums. Checksums verify exported file consistency, not authenticity of source footage. The backend does not fetch arbitrary URLs, identify people, post to neighbours, or submit police reports. It can now download authorized Ring event windows; it does not identify an optimal sub-clip automatically. The Ring pipeline includes downloaded event windows in ZIP exports (up to 64 MiB total); additional clips are individually downloadable from the review page. Missing recordings are never fabricated.
 
-Default retention is 30 days, applied by maintenance to deliveries whose creation and latest observation are older than the cutoff, including incidents. Set `DEMAFUR_RETENTION_DAYS` to override. Export needed evidence before expiry. Cascade deletion removes events, windows, actions, evidence, and audit rows from the live database; SQLite pages, backups, and external recordings require separate storage lifecycle controls. Protect the database volume, backups, and credentials.
+Default retention is 30 days, applied by maintenance to deliveries whose creation and latest observation are older than the cutoff, including incidents. Set `DEMAFUR_RETENTION_DAYS` to override. Export needed evidence before expiry. Cascade deletion removes events, windows, actions, evidence, and audit rows from the live database; database backups, and external recordings require separate storage lifecycle controls. Protect the database volume, backups, and credentials.
 
 ## Verification
 
@@ -140,4 +143,4 @@ Tests cover authentication, signed webhooks, concurrent retries, timestamp valid
 
 Dockerfile included; build with `docker build -t demafur .`, provide credentials through your platform, and mount a writable volume at `/data` for UID 10001. The container build has not been verified here.
 
-This is a working single-household MVP, not a public multi-tenant deployment. Before external launch, add user accounts and household scoping, TLS and rate/body limits at the gateway, monitored jobs, secret rotation, migration tooling and backups, and real provider adapters with delivery receipts and retry handling. SQLite serializes writes; use PostgreSQL and a worker queue for larger deployments. Ring credentials/recording access, native Alexa, lights, actual push delivery, video extraction, and long-term personalized learning are integration work still outstanding.
+This is a working single-household staging MVP, not a public multi-tenant deployment. Before external launch, add user accounts and household scoping, TLS and rate/body limits at the gateway, monitored jobs, secret rotation, backup/restore operations, and real provider adapters with delivery receipts and retry handling. PostgreSQL currently serializes workflow writes with a transaction lock; larger deployments need household-level locks and a scalable worker queue. Ring registration, recording permissions, provider credentials, and real camera validation are required to activate the new pipeline. Native Alexa, lights, actual push delivery and long-term personalized learning remain outstanding.

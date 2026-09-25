@@ -1,6 +1,11 @@
 .env
+.env.*
+!.env.example
 .venv/
 data/
+media/
+ring-private/
 __pycache__/
 .pytest_cache/
 *.egg-info/
+*-evidence.zip

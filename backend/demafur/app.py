@@ -6,7 +6,10 @@ import os
 import time
 import uuid
 import zipfile
-from datetime import timedelta, timezone
+from pathlib import Path
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from fastapi import FastAPI, Depends, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +18,7 @@ from .ai import summarize
 from .db import Database, timeline
 from .models import EventIn, PickupIn, Confirmation, ActionDecision, Question, now
 from .risk import assess
+from .pipeline import Pipeline, routes as pipeline_routes
 
 
 def create_app(db_path=None, api_key=None, webhook_secret=None):
@@ -24,8 +28,13 @@ def create_app(db_path=None, api_key=None, webhook_secret=None):
         raise RuntimeError('Set distinct DEMAFUR_API_KEY and DEMAFUR_WEBHOOK_SECRET (at least 24 characters each).')
     if key == secret:
         raise RuntimeError('Owner and webhook credentials must differ.')
-    db = Database(db_path or os.getenv('DEMAFUR_DB', './data/demafur.sqlite3'))
-    app = FastAPI(title='DemaFur Safety Agent', version='0.1.0',
+    source = db_path or os.getenv('DATABASE_URL')
+    if not source and os.getenv('DEMAFUR_ALLOW_SQLITE') == 'true':
+        source = os.getenv('DEMAFUR_DB') or './data/demafur.sqlite3'
+    if not source:
+        raise RuntimeError('Set DATABASE_URL for Supabase PostgreSQL. SQLite requires explicit DEMAFUR_ALLOW_SQLITE=true for local demos.')
+    db = Database(source)
+    app = FastAPI(title='DemaFur Safety Agent', version='0.3.0',
                   description='Single-household backend. Behaviour-based delivery safety; no identity tracking. Hardware adapters are simulated.')
     origins = [o.strip() for o in os.getenv('DEMAFUR_CORS_ORIGINS', '').split(',') if o.strip()]
     if origins:
@@ -47,7 +56,12 @@ def create_app(db_path=None, api_key=None, webhook_secret=None):
         delivery = get_delivery(conn, delivery_id)
         events = timeline(conn, delivery_id)
         windows = [dict(w) for w in conn.execute('SELECT * FROM pickups WHERE delivery_id=?', (delivery_id,))]
-        return {**delivery, **assess(events, windows, delivery['resolution'], now()), 'timeline': events}
+        assessment = assess(events, windows, delivery['resolution'], now())
+        states = [r['state'] for r in conn.execute('SELECT state FROM ring_jobs WHERE delivery_id=?', (delivery_id,))]
+        coverage = 'unavailable' if 'failed' in states else 'pending' if any(s in ('queued', 'retry', 'processing') for s in states) else 'sampled_frames' if 'completed' in states else 'not_analyzed'
+        if coverage in ('unavailable', 'pending'):
+            assessment['risk']['reasons'].append('Footage analysis is ' + coverage + '; the current score is not an all-clear assessment.')
+        return {**delivery, **assessment, 'timeline': events, 'analysis_coverage': coverage}
 
     def audit(conn, delivery_id, operation):
         conn.execute('INSERT INTO audit(delivery_id,operation,created_at) VALUES(?,?,?)',
@@ -62,7 +76,7 @@ def create_app(db_path=None, api_key=None, webhook_secret=None):
         for kind in desired:
             conn.execute("UPDATE actions SET status=?,reason=? WHERE delivery_id=? AND kind=? AND status='cancelled'",
                          ('queued' if kind == 'notify_owner' else 'pending_approval', ' '.join(view['risk']['reasons']), view['id'], kind))
-            conn.execute('INSERT OR IGNORE INTO actions VALUES(?,?,?,?,?,?)',
+            conn.execute('INSERT INTO actions VALUES(?,?,?,?,?,?) ON CONFLICT DO NOTHING',
                          (str(uuid.uuid4()), view['id'], kind,
                           'queued' if kind == 'notify_owner' else 'pending_approval',
                           ' '.join(view['risk']['reasons']), now().isoformat()))
@@ -80,13 +94,22 @@ def create_app(db_path=None, api_key=None, webhook_secret=None):
                   'neighbours_draft': 'A delivery was reported missing from my property. Please contact me privately if you have relevant information. No person has been identified.',
                   'review_required': True, 'submitted': False,
                   'clip_extraction': 'not_configured'}
-        conn.execute('INSERT OR REPLACE INTO evidence VALUES(?,?,?)',
+        conn.execute('INSERT INTO evidence VALUES(?,?,?) ON CONFLICT(delivery_id) DO UPDATE SET created_at=excluded.created_at,payload=excluded.payload',
                      (view['id'], bundle['created_at'], json.dumps(bundle)))
         return bundle
 
     @app.get('/health')
     def health():
         return {'status': 'ok', 'service': 'DemaFur', 'hardware_mode': 'simulated'}
+
+    @app.get('/ready', dependencies=auth)
+    def ready():
+        try:
+            with db.connect(timeout=1) as conn:
+                conn.execute('SELECT 1').fetchone()
+        except Exception:
+            raise HTTPException(503, 'Database unavailable') from None
+        return {'status': 'ready', 'database': 'postgresql' if db.postgres else 'sqlite_local'}
 
     @app.post('/v1/events', dependencies=auth, status_code=201)
     def event(event: EventIn, response: Response):
@@ -106,9 +129,9 @@ def create_app(db_path=None, api_key=None, webhook_secret=None):
             delivery = conn.execute('SELECT * FROM deliveries WHERE id=?', (event.delivery_id,)).fetchone()
             if delivery and delivery['camera_id'] != event.camera_id:
                 raise HTTPException(409, 'Delivery belongs to another camera')
-            if conn.execute('SELECT COUNT(*) FROM events WHERE delivery_id=?', (event.delivery_id,)).fetchone()[0] >= 2000:
+            if conn.execute('SELECT COUNT(*) AS n FROM events WHERE delivery_id=?', (event.delivery_id,)).fetchone()['n'] >= 2000:
                 raise HTTPException(409, 'Delivery event limit reached')
-            conn.execute('INSERT OR IGNORE INTO deliveries VALUES(?,?,?,NULL,NULL)',
+            conn.execute('INSERT INTO deliveries VALUES(?,?,?,NULL,NULL) ON CONFLICT DO NOTHING',
                          (event.delivery_id, event.camera_id, now().isoformat()))
             conn.execute('INSERT INTO events VALUES(?,?,?,?)',
                          (event.event_id, event.delivery_id, payload['occurred_at'], canonical))
@@ -176,7 +199,7 @@ def create_app(db_path=None, api_key=None, webhook_secret=None):
                 raise HTTPException(409, 'Cannot retroactively authorize pickup; use owner confirmation')
             record = {'id': str(uuid.uuid4()), 'delivery_id': data.delivery_id,
                       'starts_at': start.isoformat(), 'ends_at': end.isoformat(), 'created_at': now().isoformat(), 'revoked': 0}
-            conn.execute('INSERT INTO pickups VALUES(:id,:delivery_id,:starts_at,:ends_at,:created_at,:revoked)', record)
+            conn.execute('INSERT INTO pickups VALUES(?,?,?,?,?,?)', tuple(record[k] for k in ('id','delivery_id','starts_at','ends_at','created_at','revoked')))
             audit(conn, data.delivery_id, 'pickup_window_created')
             return record
 
@@ -234,7 +257,7 @@ def create_app(db_path=None, api_key=None, webhook_secret=None):
     @app.post('/v1/actions/dispatch', dependencies=auth)
     def dispatch():
         with db.connect() as conn:
-            for row in conn.execute('SELECT DISTINCT delivery_id FROM actions WHERE status="queued"').fetchall():
+            for row in conn.execute("SELECT DISTINCT delivery_id FROM actions WHERE status='queued'").fetchall():
                 sync_actions(conn, snapshot(conn, row['delivery_id']))
             rows = conn.execute("SELECT * FROM actions WHERE status='queued'").fetchall()
             for row in rows:
@@ -250,6 +273,7 @@ def create_app(db_path=None, api_key=None, webhook_secret=None):
             # Retention includes incidents; export reviewed evidence before expiry.
             expired = conn.execute('SELECT id FROM deliveries WHERE created_at<? AND id NOT IN (SELECT delivery_id FROM events WHERE occurred_at>=?)', (cutoff, cutoff)).fetchall()
             for row in expired:
+                pipeline.remove_delivery(conn, row['id'])
                 conn.execute('DELETE FROM deliveries WHERE id=?', (row['id'],))
             for row in conn.execute('SELECT id FROM deliveries').fetchall():
                 sync_actions(conn, snapshot(conn, row['id']))
@@ -271,6 +295,24 @@ def create_app(db_path=None, api_key=None, webhook_secret=None):
                  'report-draft.txt': bundle['report_draft'].encode(),
                  'neighbours-draft.txt': bundle['neighbours_draft'].encode()}
         manifest = {name: hashlib.sha256(content).hexdigest() for name, content in files.items()}
+        with db.connect() as conn:
+            clips = conn.execute("SELECT * FROM ring_jobs WHERE delivery_id=? AND state='completed' ORDER BY occurred_at", (delivery_id,)).fetchall()
+            # Bound archive memory use; remaining clips remain individually downloadable.
+            total = 0
+            included = []
+            for clip in clips:
+                path = pipeline.clip(clip)
+                if path.is_file() and total + path.stat().st_size <= 64 * 1024 * 1024:
+                    content = path.read_bytes()
+                    name = 'clips/' + clip['id'] + '.mp4'
+                    files[name] = content
+                    included.append({'job_id': clip['id'], 'path': name, 'media': json.loads(clip['media'])})
+                    total += len(content)
+            bundle['included_recordings'] = included
+            bundle['recordings_not_included'] = len(clips) - len(included)
+            bundle['clip_extraction'] = 'event_windows_downloaded' if included else 'not_configured'
+            files['evidence.json'] = json.dumps(bundle, indent=2).encode()
+        manifest = {name: hashlib.sha256(content).hexdigest() for name, content in files.items()}
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
             for name, content in files.items():
@@ -289,6 +331,7 @@ def create_app(db_path=None, api_key=None, webhook_secret=None):
     def delete(delivery_id: str):
         with db.connect() as conn:
             get_delivery(conn, delivery_id)
+            pipeline.remove_delivery(conn, delivery_id)
             conn.execute('DELETE FROM deliveries WHERE id=?', (delivery_id,))
             return {'deleted': True, 'external_media_deleted': False}
 
@@ -305,5 +348,55 @@ def create_app(db_path=None, api_key=None, webhook_secret=None):
         texts = [f"{v['id']}: {v['status'].replace('_', ' ')}, {v['risk']['level'].replace('_', ' ')}." for v in views]
         return {'text': ' '.join(texts) or 'No matching deliveries recorded.', 'source': 'policy_template',
                 'timezone': 'UTC', 'integration': 'authenticated_intent_api_not_native_alexa_skill'}
+
+    def apply_analysis(conn, job, media, analysis):
+        delivery = get_delivery(conn, job['delivery_id'])
+        candidates = [{'event_id': 'ring-' + job['id'], 'delivery_id': job['delivery_id'],
+                       'camera_id': job['camera_id'], 'kind': job['event_kind'],
+                       'occurred_at': job['occurred_at'], 'confidence': 1,
+                       'observations': {'duration_seconds': 0, 'looking_around': False},
+                       'media_ref': 'ring/' + job['id'] + '.mp4', 'provenance': 'ring_webhook'}]
+        start = datetime.fromtimestamp(media['start_ms']/1000, timezone.utc)
+        for index, observation in enumerate(analysis['observations']):
+            occurred = start + timedelta(seconds=observation['offset_seconds'])
+            if occurred > start + timedelta(milliseconds=media['duration_ms']):
+                raise ValueError('Observation outside recorded clip')
+            candidates.append({'event_id': 'vision-' + job['id'] + '-' + str(index),
+                'delivery_id': job['delivery_id'], 'camera_id': job['camera_id'],
+                'kind': observation['kind'], 'occurred_at': occurred.isoformat(),
+                'confidence': observation['confidence'],
+                'observations': {'duration_seconds': observation['duration_seconds'], 'looking_around': False},
+                'media_ref': 'ring/' + job['id'] + '.mp4', 'provenance': 'sampled_frame_analysis',
+                'explanation': observation['explanation'], 'frame_indices': observation['frame_indices']})
+        existing = timeline(conn, job['delivery_id'])
+        if len(existing) + len(candidates) > 2000:
+            raise ValueError('Delivery observation limit reached')
+        for payload in candidates:
+            # Avoid double-counting the same action in overlapping event clips.
+            if payload['provenance'] == 'sampled_frame_analysis' and any(
+                e.get('provenance') == 'sampled_frame_analysis' and e['kind'] == payload['kind']
+                and abs((datetime.fromisoformat(e['occurred_at']) - datetime.fromisoformat(payload['occurred_at'])).total_seconds()) <= 5
+                for e in existing):
+                continue
+            conn.execute('INSERT INTO events VALUES(?,?,?,?) ON CONFLICT DO NOTHING',
+                (payload['event_id'], job['delivery_id'], payload['occurred_at'], json.dumps(payload)))
+        view = snapshot(conn, job['delivery_id'])
+        sync_actions(conn, view)
+        if delivery['resolution'] == 'missing':
+            build_evidence(conn, view)
+        audit(conn, job['delivery_id'], 'ring_clip_analyzed')
+
+    pipeline = Pipeline(db, apply_analysis)
+    app.state.pipeline = pipeline
+    app.include_router(pipeline_routes(pipeline, owner))
+    static = Path(__file__).parent / 'static'
+    app.mount('/review-assets', StaticFiles(directory=static), name='review-assets')
+
+    @app.get('/review', include_in_schema=False)
+    def review():
+        return FileResponse(static / 'review.html', headers={
+            'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+            'Referrer-Policy': 'no-referrer',
+            'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"})
 
     return app
