@@ -19,6 +19,7 @@ from .ai import summarize
 from .db import Database, timeline
 from .models import EventIn, PickupIn, Confirmation, ActionDecision, Question, now
 from .risk import assess
+from .dashboard import overview
 from .pipeline import Pipeline, routes as pipeline_routes
 
 
@@ -170,6 +171,20 @@ def create_app(db_path=None, api_key=None, webhook_secret=None):
         except ValidationError:
             raise HTTPException(422, 'Invalid event payload')
         return ingest(event, response)
+
+    @app.get('/v1/dashboard', dependencies=auth)
+    def dashboard(response: Response, activity_limit: int = 20, delivery_limit: int = 20):
+        if not 1 <= activity_limit <= 100 or not 1 <= delivery_limit <= 100:
+            raise HTTPException(422, 'limits must be 1..100')
+        with db.connect() as conn:
+            result = overview(conn, activity_limit, delivery_limit)
+        integration = pipeline.status()
+        # Configuration alone cannot establish that a camera or worker is healthy.
+        result['monitoringStatus'] = 'offline' if not integration['ring_configured'] or integration['ring_disabled'] else 'warning'
+        result['monitoringReason'] = 'Camera and worker liveness have not been verified.'
+        result['integrations'] = integration
+        response.headers['Cache-Control'] = 'no-store'
+        return result
 
     @app.get('/v1/deliveries', dependencies=auth)
     def deliveries(limit: int = 50, offset: int = 0):

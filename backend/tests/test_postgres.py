@@ -79,6 +79,9 @@ def test_postgres_workflow(pg_client):
     assert pg_client.post('/v1/events',json=data).status_code == 201
     assert pg_client.post('/v1/events',json=data).status_code == 200
     assert pg_client.get('/ready').json()['database'] == 'postgresql'
+    dashboard = pg_client.get('/v1/dashboard').json()
+    assert dashboard['activePackages'] == dashboard['pendingConfirmations'] == 1
+    assert dashboard['recentActivity'][0]['event_id'] == 'pg-event'
     assert pg_client.get('/v1/deliveries/pg-delivery').json()['status'] == 'needs_confirmation'
     pg_client.post('/v1/deliveries/pg-delivery/confirmation',json={'outcome':'missing'})
     assert pg_client.get('/v1/deliveries/pg-delivery/evidence.zip').status_code == 200

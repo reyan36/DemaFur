@@ -32,6 +32,10 @@ python demo.py
 
 The demo sends signed observations, demonstrates escalation, records an owner-reported missing package, and downloads a ZIP. It does not approve physical actions. Its media paths are illustrative, not real recordings.
 
+## Dashboard integration and deployment test
+
+See [FRONTEND_API.md](FRONTEND_API.md) for the authenticated dashboard endpoint, frontend type mapping and `python smoke_test.py` deployment check. The current Next.js screens still use mock data and need authentication before private household data is connected.
+
 ## API contract
 
 | Method / path | Purpose |
