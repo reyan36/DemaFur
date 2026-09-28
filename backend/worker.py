@@ -16,7 +16,7 @@ def main():
                 for path in ['/v1/maintenance', '/v1/analysis/process', '/v1/actions/dispatch']:
                     response = client.post(path)
                     response.raise_for_status()
-                    logging.info('%s: %s', path, response.json())
+                    logging.info('%s completed (HTTP %s)', path, response.status_code)
             except httpx.HTTPError as error:
                 # Do not log credential-bearing request headers.
                 logging.error('Worker cycle failed (%s); retrying next cycle', type(error).__name__)
