@@ -1,6 +1,15 @@
+"use client";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 export function Footer() {
+  const pathname = usePathname();
+  
+  // Hide footer on dashboard and package details pages
+  if (pathname?.startsWith('/dashboard') || pathname?.startsWith('/packages')) {
+    return null;
+  }
+
   return (
     <footer className="bg-white border-t border-gray-100 overflow-hidden">
       {/* Big name */}

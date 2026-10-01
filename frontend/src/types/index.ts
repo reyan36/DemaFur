@@ -8,13 +8,13 @@ export interface Event {
 }
 
 export interface RiskAssessment {
-  level: 'low' | 'medium' | 'high';
+  level: 'normal' | 'needs_confirmation' | 'suspicious' | 'high_risk';
   reasons: string[];
 }
 
 export interface Delivery {
   id: string;
-  status: 'active' | 'missing' | 'retrieved';
+  status: 'awaiting_delivery' | 'delivered' | 'needs_confirmation' | 'collected' | 'incident';
   resolution: string | null;
   created_at: string;
   timeline: Event[];
@@ -24,7 +24,10 @@ export interface Delivery {
 export interface DashboardStats {
   activePackages: number;
   historicalPackages: number;
-  recentActivity: Event[];
   activeIncidents: number;
+  pendingConfirmations: number;
+  recentActivity: Event[];
+  activeDeliveries: Delivery[];
   monitoringStatus: 'healthy' | 'warning' | 'offline';
+  monitoringReason?: string;
 }

@@ -2,10 +2,11 @@ import { Delivery } from '@/types';
 import Link from 'next/link';
 
 export function PackageList({ deliveries }: { deliveries: Delivery[] }) {
-  const riskStyles = {
-    high: 'bg-red-50 text-red-600 border-red-100',
-    medium: 'bg-amber-50 text-amber-600 border-amber-100',
-    low: 'bg-emerald-50 text-emerald-600 border-emerald-100',
+  const riskStyles: Record<string, string> = {
+    high_risk: 'bg-red-50 text-red-600 border-red-100',
+    suspicious: 'bg-amber-50 text-amber-600 border-amber-100',
+    needs_confirmation: 'bg-blue-50 text-blue-600 border-blue-100',
+    normal: 'bg-emerald-50 text-emerald-600 border-emerald-100',
   };
 
   return (
