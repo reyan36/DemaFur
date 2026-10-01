@@ -7,6 +7,7 @@ from contextlib import contextmanager
 import firebase_admin
 from firebase_admin import credentials, firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
+from google.cloud.firestore import Query
 
 
 class Database:
@@ -76,7 +77,7 @@ class Database:
 
     def list_deliveries(self, limit=None, offset=0):
         query = self.fs.collection('deliveries').order_by(
-            'created_at', direction=firestore.Query.DESCENDING)
+            'created_at', direction=Query.DESCENDING)
         docs = list(query.stream())
         if offset:
             docs = docs[offset:]
@@ -123,7 +124,7 @@ class Database:
     def list_recent_events(self, limit=20):
         """Recent events, newest first."""
         docs = self.fs.collection('events').order_by(
-            'occurred_at', direction=firestore.Query.DESCENDING
+            'occurred_at', direction=Query.DESCENDING
         ).limit(limit).stream()
         return [doc.to_dict() for doc in docs]
 
@@ -157,7 +158,7 @@ class Database:
 
     def list_pickups_descending(self, limit=100):
         docs = self.fs.collection('pickups').order_by(
-            'starts_at', direction=firestore.Query.DESCENDING
+            'starts_at', direction=Query.DESCENDING
         ).limit(limit).stream()
         return [doc.to_dict() for doc in docs]
 
@@ -194,7 +195,7 @@ class Database:
         if status:
             query = query.where(filter=FieldFilter('status', '==', status))
         query = query.order_by(
-            'created_at', direction=firestore.Query.DESCENDING)
+            'created_at', direction=Query.DESCENDING)
         if limit:
             query = query.limit(limit)
         return [doc.to_dict() for doc in query.stream()]
@@ -305,7 +306,7 @@ class Database:
         if state:
             query = query.where(filter=FieldFilter('state', '==', state))
         query = query.order_by(
-            'created_at', direction=firestore.Query.DESCENDING)
+            'created_at', direction=Query.DESCENDING)
         if limit:
             query = query.limit(limit)
         result = [doc.to_dict() for doc in query.stream()]
