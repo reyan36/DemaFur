@@ -4,6 +4,7 @@ import json
 import time
 from pathlib import Path
 from contextlib import contextmanager
+from .local_store import MemoryFirestore
 import firebase_admin
 from firebase_admin import credentials, firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
@@ -12,6 +13,18 @@ from google.cloud.firestore import Query
 
 class Database:
     def __init__(self):
+
+        self.data_dir = Path(os.getenv('DEMAFUR_DATA_DIR') or './data')
+
+        # Kept for any code that checks db.postgres
+        self.postgres = False
+
+        if os.getenv('DEMAFUR_LOCAL_DB') == 'memory':
+            self.fs = MemoryFirestore()
+            self.local = True
+            return
+        self.local = False
+
         if not firebase_admin._apps:
             cred_json = os.getenv('FIREBASE_CREDENTIALS_JSON')
             cred_path = os.getenv('FIREBASE_CREDENTIALS')
@@ -23,11 +36,8 @@ class Database:
                 raise RuntimeError(
                     'Set FIREBASE_CREDENTIALS (path) or FIREBASE_CREDENTIALS_JSON (JSON string)')
             firebase_admin.initialize_app(cred)
-
+        
         self.fs = firestore.client()
-        self.data_dir = Path(os.getenv('DEMAFUR_DATA_DIR') or './data')
-        # Kept for any code that checks db.postgres
-        self.postgres = False
 
     @contextmanager
     def connect(self, timeout=10):

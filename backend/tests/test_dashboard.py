@@ -10,7 +10,7 @@ KEY = 'dashboard-test-owner-key-123456789'
 def client(tmp_path, monkeypatch):
     for name in ('RING_CLIENT_ID', 'RING_CLIENT_SECRET', 'RING_REFRESH_TOKEN'):
         monkeypatch.delenv(name, raising=False)
-    app = create_app(tmp_path/'db.sqlite3', KEY, 'dashboard-test-webhook-key-123456789')
+    app = create_app(KEY, 'dashboard-test-webhook-key-123456789')
     with TestClient(app, headers={'Authorization': f'Bearer {KEY}'}) as client:
         yield client
 

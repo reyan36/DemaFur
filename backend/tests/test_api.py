@@ -20,7 +20,7 @@ SECRET = 'bridge-test-secret-123456789012345'
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv('AI_PROVIDER', 'openai')
     monkeypatch.delenv('OPENAI_API_KEY', raising=False)
-    app = create_app(tmp_path / 'test.db', KEY, SECRET)
+    app = create_app(KEY, SECRET)
     with TestClient(app, headers={'Authorization': f'Bearer {KEY}'}) as c:
         yield c
 
@@ -204,16 +204,13 @@ def test_summary_and_intents(client):
     assert 'delivered' in client.post('/v1/assistant/query', json={'intent': 'package_status'}).json()['text']
 
 
-def test_persistence_and_retention(tmp_path):
-    path = tmp_path / 'persistent.db'
-    with TestClient(create_app(path, KEY, SECRET), headers={'Authorization': f'Bearer {KEY}'}) as c:
-        send(c, occurred_at=(now() - timedelta(days=40)).isoformat())
-    with sqlite3.connect(path) as conn:
-        conn.execute('UPDATE deliveries SET created_at=?', ((now() - timedelta(days=40)).isoformat(),))
-    with TestClient(create_app(path, KEY, SECRET), headers={'Authorization': f'Bearer {KEY}'}) as c:
-        assert c.get('/v1/deliveries/d1').status_code == 200
-        assert c.post('/v1/maintenance').json()['deleted_deliveries'] == 1
-        assert c.get('/v1/deliveries/d1').status_code == 404
+def test_retention_deletes_old_deliveries(client):
+    send(client, occurred_at=(now() - timedelta(days=40)).isoformat())
+    db = client.app.state.pipeline.db
+    db.update_delivery('d1', created_at=(now() - timedelta(days=40)).isoformat())
+    assert client.get('/v1/deliveries/d1').status_code == 200
+    assert client.post('/v1/maintenance').json()['deleted_deliveries'] == 1
+    assert client.get('/v1/deliveries/d1').status_code == 404
 
 
 def test_expired_and_revoked_windows(client):
