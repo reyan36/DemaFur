@@ -28,7 +28,7 @@ def client(tmp_path, monkeypatch):
         'DEMAFUR_VISION_ENABLED': 'true', 'OPENAI_API_KEY': 'vision-secret', 'OPENAI_VISION_MODEL': 'test-model',
         'DEMAFUR_MEDIA_DIR': str(tmp_path/'media')}.items():
         monkeypatch.setenv(name, value)
-    app = create_app(tmp_path/'test.db', OWNER, 'internal-webhook-secret-1234567')
+    app = create_app(OWNER, 'internal-webhook-secret-1234567')
     monkeypatch.setattr(app.state.pipeline.ring, 'devices', lambda: {'data': [{'id': 'ava1.device.camera'}]})
     with TestClient(app, headers={'Authorization': f'Bearer {OWNER}'}) as client:
         yield client
@@ -361,7 +361,6 @@ def test_replayed_removal_does_not_disconnect_new_link(client):
     watch(client)
     removal=payload(kind='app_integration_removed',event_id='first-unlink')
     assert post(client,removal).json()['integration_disabled']
-    with client.app.state.pipeline.db.connect() as conn:
-        conn.execute("UPDATE integration_state SET value='false' WHERE key='ring_disabled'")
+    client.app.state.pipeline.db.set_state('ring_disabled', 'false')
     assert post(client,removal).json()['duplicate']
     assert client.get('/v1/integrations/status').json()['ring_disabled'] is False
