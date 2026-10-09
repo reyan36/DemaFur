@@ -1,5 +1,7 @@
 # DemaFur backend
 
+For persistent demo deliveries and incident ZIP verification, see [DEMO_SCENARIOS.md](DEMO_SCENARIOS.md). These are normalized API events, not a Ring virtual camera.
+
 **Version 0.3:** Supabase PostgreSQL migrations, AWS Bedrock text/vision analysis and opt-in Groq fallback are implemented alongside the delivery workflow and Ring adapter. Start with [STACK_SETUP.md](STACK_SETUP.md), then [LIVE_SETUP.md](LIVE_SETUP.md). Live Supabase, AWS and Ring validation is still required. Alexa and physical actions remain simulated.
 
 FastAPI backend for a single-household staging MVP. The planned Next.js/Vercel dashboard calls FastAPI on Railway; PostgreSQL lives on Supabase Cloud. The included `/review` page is a staging console, not the Next.js dashboard.
