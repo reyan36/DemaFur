@@ -4,7 +4,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY demafur ./demafur
-COPY worker.py demo.py ./
+COPY worker.py demo.py smoke_test.py demo_scenarios.py ./
 RUN useradd --uid 10001 --create-home app && mkdir /data && chown app:app /data
 USER app
 ENV DEMAFUR_DATA_DIR=/data
