@@ -137,7 +137,7 @@ def create_app(api_key=None, webhook_secret=None):
         db.set_evidence(view['id'], bundle['created_at'], json.dumps(bundle))
         return bundle
 
-    @app.get('/health')
+    @app.api_route('/health', methods=['GET', 'HEAD'])
     def health():
         return {'status': 'ok', 'service': 'DemaFur',
                 'hardware_mode': 'simulated'}
