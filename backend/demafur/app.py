@@ -37,13 +37,13 @@ def create_app(api_key=None, webhook_secret=None):
     app = FastAPI(
         title='DemaFur Safety Agent', version='0.4.0',
         description='Single-household backend powered by Firebase Firestore.')
-    origins = [o.strip() for o in
-               os.getenv('DEMAFUR_CORS_ORIGINS', '').split(',') if o.strip()]
-    if origins:
-        app.add_middleware(
-            CORSMiddleware, allow_origins=origins,
-            allow_methods=['GET', 'POST', 'DELETE'],
-            allow_headers=['Authorization', 'Content-Type'])
+    cors_env = os.getenv('DEMAFUR_CORS_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000,*')
+    origins = [o.strip() for o in cors_env.split(',') if o.strip()]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=['*'] if '*' in origins else origins,
+        allow_methods=['GET', 'POST', 'DELETE', 'OPTIONS'],
+        allow_headers=['*'])
 
     bearer = HTTPBearer(
         auto_error=False,
@@ -238,6 +238,16 @@ def create_app(api_key=None, webhook_secret=None):
             'items': [{k: v for k, v in s.items() if k != 'timeline'}
                       for s in views],
             'limit': limit, 'offset': offset}
+
+    @app.post('/v1/deliveries/purge', dependencies=auth)
+    def purge_all_deliveries():
+        all_dels = db.list_deliveries(limit=500)
+        deleted = []
+        for d in all_dels:
+            pipeline.remove_delivery(db, d['id'])
+            db.delete_delivery(d['id'])
+            deleted.append(d['id'])
+        return {'purged': len(deleted), 'deliveries': deleted}
 
     @app.get('/v1/deliveries/{delivery_id}', dependencies=auth)
     def detail(delivery_id: str):

@@ -1,5 +1,5 @@
-export function StatCard({ title, value, status }: { title: string; value: string | number; status?: 'default' | 'danger' | 'success' }) {
-  const accent = status === 'danger' ? 'text-red-500' : status === 'success' ? 'text-emerald-500' : 'text-black';
+export function StatCard({ title, value, status }: { title: string; value: string | number; status?: 'default' | 'danger' | 'warning' | 'success' }) {
+  const accent = status === 'danger' ? 'text-red-500' : status === 'warning' ? 'text-amber-500' : status === 'success' ? 'text-emerald-500' : 'text-black';
 
   return (
     <div className="bg-white p-6 border border-gray-100 rounded-2xl">

@@ -1,42 +1,62 @@
 "use client";
 
 import Link from "next/link";
-import { User } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
 
 export function Header() {
- return (
- <header className="bg-white border-b border-gray-100 sticky top-0 z-40">
- <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
- <div className="flex justify-between h-16 items-center">
- 
- <div className="flex-shrink-0 flex items-center">
- <Link href="/" className="text-xl font-bold tracking-tighter text-black">
- DemaFur.
- </Link>
- </div>
+  const { user, logout } = useAuth();
 
- <div className="flex items-center space-x-6">
- <Link href="/dashboard" className="text-sm font-medium text-gray-500 hover:text-black transition-colors">
- Dashboard
- </Link>
- 
- <div className="flex items-center space-x-2 border-l border-gray-100 pl-6">
- <Link 
- href="/login" 
- className="text-sm font-medium text-gray-500 hover:text-black px-3 py-2 transition-colors"
- >
- Log in
- </Link>
- <Link 
- href="/signup" 
- className="text-sm font-medium bg-black text-white hover:bg-gray-800 px-4 py-2 rounded-full transition-colors"
- >
- Sign up
- </Link>
- </div>
- </div>
- </div>
- </div>
- </header>
- );
+  return (
+    <header className="bg-white border-b border-gray-100 sticky top-0 z-40">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between h-16 items-center">
+          <div className="flex-shrink-0 flex items-center">
+            <Link href="/" className="text-xl font-black tracking-tighter text-black">
+              DemaFur.
+            </Link>
+          </div>
+
+          <div className="flex items-center space-x-6">
+            <Link
+              href="/dashboard"
+              className="text-sm font-medium text-gray-500 hover:text-black transition-colors"
+            >
+              Dashboard
+            </Link>
+
+            <div className="flex items-center space-x-3 border-l border-gray-100 pl-6">
+              {user ? (
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-mono text-gray-500 hidden sm:inline-block max-w-[150px] truncate">
+                    {user.displayName || user.email}
+                  </span>
+                  <button
+                    onClick={() => logout()}
+                    className="text-xs font-medium text-gray-500 hover:text-black px-3 py-1.5 rounded-lg border border-gray-200 hover:border-black transition"
+                  >
+                    Sign out
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <Link
+                    href="/login"
+                    className="text-sm font-medium text-gray-500 hover:text-black px-3 py-2 transition-colors"
+                  >
+                    Log in
+                  </Link>
+                  <Link
+                    href="/signup"
+                    className="text-sm font-medium bg-black text-white hover:bg-gray-800 px-4 py-2 rounded-full transition-colors"
+                  >
+                    Sign up
+                  </Link>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+  );
 }

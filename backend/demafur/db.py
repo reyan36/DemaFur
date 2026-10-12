@@ -121,10 +121,10 @@ class Database:
 
     def list_events_for_delivery(self, delivery_id):
         """Events for a delivery, ordered by occurred_at ascending."""
-        docs = self.fs.collection('events').where(
-            filter=FieldFilter('delivery_id', '==', delivery_id)
-        ).order_by('occurred_at').stream()
-        return [doc.to_dict() for doc in docs]
+        docs = [doc.to_dict() for doc in self.fs.collection('events').where(
+            filter=FieldFilter('delivery_id', '==', delivery_id)).stream()]
+        docs.sort(key=lambda d: d.get('occurred_at', ''))
+        return docs
 
     def list_all_events_ordered(self):
         """All events ordered by occurred_at, id ascending (for dashboard)."""
@@ -204,11 +204,11 @@ class Database:
                 filter=FieldFilter('delivery_id', '==', delivery_id))
         if status:
             query = query.where(filter=FieldFilter('status', '==', status))
-        query = query.order_by(
-            'created_at', direction=Query.DESCENDING)
+        docs = [doc.to_dict() for doc in query.stream()]
+        docs.sort(key=lambda d: d.get('created_at', ''), reverse=True)
         if limit:
-            query = query.limit(limit)
-        return [doc.to_dict() for doc in query.stream()]
+            docs = docs[:limit]
+        return docs
 
     def find_action(self, delivery_id, kind):
         """Find action by delivery + kind (replaces UNIQUE constraint lookup)."""
@@ -315,14 +315,13 @@ class Database:
                 filter=FieldFilter('delivery_id', '==', delivery_id))
         if state:
             query = query.where(filter=FieldFilter('state', '==', state))
-        query = query.order_by(
-            'created_at', direction=Query.DESCENDING)
+        docs = [doc.to_dict() for doc in query.stream()]
+        docs.sort(key=lambda d: d.get('created_at', ''), reverse=True)
         if limit:
-            query = query.limit(limit)
-        result = [doc.to_dict() for doc in query.stream()]
-        for r in result:
+            docs = docs[:limit]
+        for r in docs:
             r.setdefault('id', r.get('id'))
-        return result
+        return docs
 
     def count_ring_jobs_active(self):
         """Count jobs in queued/retry/processing states."""
@@ -342,27 +341,31 @@ class Database:
         now_ts = time.time()
         # Check queued/retry jobs
         for state in ('queued', 'retry'):
-            docs = list(self.fs.collection('ring_jobs')
-                        .where(filter=FieldFilter('state', '==', state))
-                        .where(filter=FieldFilter('available_at', '<=', now_ts))
-                        .where(filter=FieldFilter('attempts', '<', 5))
-                        .order_by('occurred_at')
-                        .limit(1).stream())
-            if docs:
-                data = docs[0].to_dict()
-                data.setdefault('id', docs[0].id)
-                return data
+            raw_docs = [doc for doc in self.fs.collection('ring_jobs')
+                        .where(filter=FieldFilter('state', '==', state)).stream()]
+            eligible = []
+            for d in raw_docs:
+                item = d.to_dict()
+                if item.get('available_at', 0) <= now_ts and item.get('attempts', 0) < 5:
+                    item.setdefault('id', d.id)
+                    eligible.append(item)
+            if eligible:
+                eligible.sort(key=lambda x: x.get('occurred_at', ''))
+                return eligible[0]
         # Check expired leases
-        docs = list(self.fs.collection('ring_jobs')
-                    .where(filter=FieldFilter('state', '==', 'processing'))
-                    .where(filter=FieldFilter('lease_until', '<', now_ts))
-                    .where(filter=FieldFilter('attempts', '<', 5))
-                    .order_by('occurred_at')
-                    .limit(1).stream())
-        if docs:
-            data = docs[0].to_dict()
-            data.setdefault('id', docs[0].id)
-            return data
+        raw_docs = [doc for doc in self.fs.collection('ring_jobs')
+                    .where(filter=FieldFilter('state', '==', 'processing')).stream()]
+        expired = []
+        for d in raw_docs:
+            item = d.to_dict()
+            if (item.get('lease_until') is not None
+                    and item.get('lease_until', 0) < now_ts
+                    and item.get('attempts', 0) < 5):
+                item.setdefault('id', d.id)
+                expired.append(item)
+        if expired:
+            expired.sort(key=lambda x: x.get('occurred_at', ''))
+            return expired[0]
         return None
 
     def expire_exhausted_jobs(self):
@@ -403,14 +406,13 @@ class Database:
 
     def list_completed_jobs(self, delivery_id):
         """Completed jobs for a delivery, ordered by occurred_at."""
-        docs = self.fs.collection('ring_jobs') \
-            .where(filter=FieldFilter('delivery_id', '==', delivery_id)) \
-            .where(filter=FieldFilter('state', '==', 'completed')) \
-            .order_by('occurred_at').stream()
-        result = [doc.to_dict() for doc in docs]
-        for r in result:
+        docs = [doc.to_dict() for doc in self.fs.collection('ring_jobs')
+                .where(filter=FieldFilter('delivery_id', '==', delivery_id))
+                .where(filter=FieldFilter('state', '==', 'completed')).stream()]
+        docs.sort(key=lambda d: d.get('occurred_at', ''))
+        for r in docs:
             r.setdefault('id', r.get('id'))
-        return result
+        return docs
 
     def job_states_for_delivery(self, delivery_id):
         """Get all job states for a delivery."""
@@ -427,10 +429,10 @@ class Database:
         })
 
     def list_audit(self, delivery_id):
-        docs = self.fs.collection('audit').where(
-            filter=FieldFilter('delivery_id', '==', delivery_id)
-        ).order_by('created_at').stream()
-        return [doc.to_dict() for doc in docs]
+        docs = [doc.to_dict() for doc in self.fs.collection('audit').where(
+            filter=FieldFilter('delivery_id', '==', delivery_id)).stream()]
+        docs.sort(key=lambda d: d.get('created_at', ''))
+        return docs
 
     # ---- Helpers ----
 
