@@ -126,9 +126,23 @@ Run `python worker.py` beside the server, with the same exported owner key, for 
 
 ### Optional AI
 
-Bedrock is the default provider. Configure region and model IDs as described in STACK_SETUP.md. Text failures return a labelled local policy summary. Visual analysis requires explicit opt-in; Groq fallback is separately opt-in and only handles transient Bedrock failures. Model output is validated and cannot approve physical actions. Legacy OpenAI support requires `AI_PROVIDER=openai`.
+Bedrock is the default provider. Configure region and model IDs as described in STACK_SETUP.md. Visual analysis requires explicit opt-in (`DEMAFUR_VISION_ENABLED=true`). Model output is validated and cannot approve physical actions. If no AI provider answers, text summaries return a labelled local policy summary.
 
-The review interface is available at `/review`. The assistant accepts `package_status`, `today_summary`, and `safety_status`, optionally scoped by `delivery_id`. Day boundaries use UTC. These are frontend/voice-bridge intents; native Alexa request verification and account linking remain to be connected.
+**AI provider modes**
+
+| Mode | Settings | Behaviour |
+|---|---|---|
+| Default | `AI_PROVIDER` unset or `bedrock` | Bedrock first. If Bedrock is temporarily failing or unavailable to the account (not configured, AccessDenied, ValidationException such as "Error 002", ResourceNotFound) and `GROQ_API_KEY` is set, Groq answers instead. |
+| Fallback off | `GROQ_FALLBACK_ENABLED=false` | Bedrock only. |
+| Groq only (testing) | `AI_PROVIDER=groq` | Groq for all AI calls; Bedrock is never called. Not AWS usage. |
+
+Every AI result records `provider`, `fallback_used` and `primary_error` (the Bedrock error that caused a fallback), so it is always visible which service answered. Refusals and invalid model output are never routed to Groq. Groq vision accepts at most three images, so Groq analyses use the first, middle and last sampled frame and add a reduced-coverage limitation.
+
+Groq settings: `GROQ_API_KEY`, `GROQ_MODEL`, `GROQ_VISION_MODEL`. Current free-tier choice: `qwen/qwen3.8-27b` for both (the only Groq vision model; a preview model that may be withdrawn). Groq answers do not count as AWS Bedrock usage for the AWS Builder challenge.
+
+> **Status (Oct 2026):** Bedrock is blocked on the team AWS account (Error 002; AWS support case open). Until it is resolved, AI answers come from the Groq fallback. When Bedrock access is restored, it is used automatically — no setting change needed. Review this section once Bedrock is confirmed working.
+
+Legacy OpenAI support requires `AI_PROVIDER=openai`.
 
 ## Evidence and privacy
 
