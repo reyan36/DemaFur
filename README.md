@@ -43,11 +43,21 @@ Over **260 million delivered packages** are stolen from doorsteps across North A
 
 ## System Architecture
 
-The animated telemetry pipeline below illustrates how video and motion events stream from the doorstep camera into the behavioral engine, multimodal AI, realtime database, and dashboard:
+### 1. Data Pipeline Architecture
 
 <div align="center">
-  <img src="docs/architecture-loop.svg" alt="DemaFur Animated Pipeline Telemetry" width="100%" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/architecture-light.svg">
+    <img alt="DemaFur Architecture Flow" src="docs/architecture-dark.svg" width="100%">
+  </picture>
 </div>
+
+<br/>
+
+---
+
+### 2. Event Sequence Protocol
 
 ```mermaid
 sequenceDiagram
@@ -105,40 +115,6 @@ The production backend and database health are monitored 24/7 with automated 5-m
 * **Live Status Dashboard**: [stats.uptimerobot.com/5q6oQH46Zd](https://stats.uptimerobot.com/5q6oQH46Zd)
 * **Health API Endpoint**: `GET https://demafur.onrender.com/health`
 * **Readiness Endpoint**: `GET https://demafur.onrender.com/ready`
-
----
-
-## Local Development
-
-### 1. Prerequisites
-* **Node.js** v20+ & `npm`
-* **Python** 3.11+ (optional, Render backend is accessible remotely)
-
-### 2. Frontend Setup
-```bash
-# Clone the repository
-git clone https://github.com/reyan36/DemaFur.git
-cd DemaFur/frontend
-
-# Install dependencies
-npm install
-
-# Start development server
-npm run dev
-```
-
-Visit [http://localhost:3000](http://localhost:3000) to open the dashboard.
-
-### 3. Backend Setup (Optional)
-```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-
-# Run FastAPI backend
-uvicorn demafur.app:create_app --factory --host 127.0.0.1 --port 8000
-```
 
 ---
 
