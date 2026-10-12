@@ -2,9 +2,9 @@
 
 For persistent demo deliveries and incident ZIP verification, see [DEMO_SCENARIOS.md](DEMO_SCENARIOS.md). These are normalized API events, not a Ring virtual camera.
 
-**Version 0.3:** Supabase PostgreSQL migrations, AWS Bedrock text/vision analysis and opt-in Groq fallback are implemented alongside the delivery workflow and Ring adapter. Start with [STACK_SETUP.md](STACK_SETUP.md), then [LIVE_SETUP.md](LIVE_SETUP.md). Live Supabase, AWS and Ring validation is still required. Alexa and physical actions remain simulated.
+**Version 0.3:** Supabase PostgreSQL migrations, AWS Bedrock text/vision analysis with automatic Groq fallback (default on when a Groq key is set) are implemented alongside the delivery workflow and Ring adapter. Start with [STACK_SETUP.md](STACK_SETUP.md), then [LIVE_SETUP.md](LIVE_SETUP.md). Live Supabase, AWS and Ring validation is still required. Alexa and physical actions remain simulated.
 
-FastAPI backend for a single-household staging MVP. The planned Next.js/Vercel dashboard calls FastAPI on Railway; PostgreSQL lives on Supabase Cloud. The included `/review` page is a staging console, not the Next.js dashboard.
+FastAPI backend for a single-household staging MVP. The planned Next.js/Vercel dashboard calls FastAPI on Railway; PostgreSQL lives on Supabase Cloud. The included `/review` page is a staging staconsole, not the Next.js dashboard.
 
 The supplied diagram is treated as design reference. Its identity-tracking label is intentionally excluded in favour of the written privacy requirements. No facial recognition, person IDs, demographic inference, or continuous video monitoring is implemented.
 
@@ -18,11 +18,33 @@ source .venv/bin/activate
 pip install -r requirements.txt
 export DEMAFUR_API_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
 export DEMAFUR_WEBHOOK_SECRET="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
-export DEMAFUR_ALLOW_SQLITE=true  # local demo only; production uses DATABASE_URL
+export DEMAFUR_LOCAL_DB=memory  # local only: in-memory database, no Firebase needed (see below)
 uvicorn demafur.app:create_app --factory --host 127.0.0.1 --port 8000
 ```
 
 Use two different secrets, each at least 24 characters. `.env.example` lists configuration; the application does not automatically load `.env`. Export variables through your shell or deployment secret manager. Keep keys server-side; this shared household token is suitable for a local prototype. A public web app needs individual login/session management and a backend-for-frontend so the long-lived owner token is not shipped in browser assets.
+
+### Local database options
+
+| Setting | Database | Use it for |
+|---|---|---|
+| `DEMAFUR_LOCAL_DB=memory` | In-memory fake of Firestore. Data is lost when the server stops. | Trying things out, demos, the fake Ring. No credentials needed. |
+| unset + `FIREBASE_CREDENTIALS` (file path) or `FIREBASE_CREDENTIALS_JSON` | The real team Firestore | Checking against shared data. Ask the backend owner for credentials and avoid creating junk test data. |
+
+Never set `DEMAFUR_LOCAL_DB` on Render or any deployment: every restart would wipe all deliveries. Tests set it automatically in `tests/conftest.py`.
+
+### Local AI with Groq
+
+Bedrock is blocked on the team AWS account for now (see **Optional AI**), so use Groq locally. Create a free key at https://console.groq.com/keys, then:
+
+```sh
+export GROQ_API_KEY="<your own key>"
+export GROQ_MODEL=qwen/qwen3.8-27b
+export GROQ_VISION_MODEL=qwen/qwen3.8-27b
+export AI_PROVIDER=groq            # optional: Groq only, skips trying Bedrock
+```
+
+Without `AI_PROVIDER=groq`, the backend tries Bedrock first and falls back to Groq. Responses then show `fallback_used: true`. Use your own key; never commit it or paste it into chat.
 
 Interactive API documentation: http://127.0.0.1:8000/docs. Click **Authorize** and paste only your `DEMAFUR_API_KEY` value. Swagger adds the Bearer prefix. Other API clients should send `Authorization: Bearer <DEMAFUR_API_KEY>`. OpenAPI is at `/openapi.json`, with a checked-in copy at `openapi.json`.
 
