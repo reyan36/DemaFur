@@ -80,10 +80,21 @@ def test_optional_groq_fallback_attributed(monkeypatch):
 
 
 @pytest.mark.parametrize('code',['AccessDeniedException','ValidationException','ResourceNotFoundException'])
-def test_configuration_errors_do_not_silently_use_groq(monkeypatch,code):
+def test_unavailable_bedrock_without_groq_key_keeps_bedrock_error(monkeypatch,code):
     monkeypatch.setenv('GROQ_FALLBACK_ENABLED','true')
     with pytest.raises(IntegrationError,match='bedrock_'+code):
         providers.generate('Summary','Facts',client=FakeBedrock(error=AwsError(code)))
+
+
+@pytest.mark.parametrize('code',['AccessDeniedException','ValidationException','ResourceNotFoundException'])
+def test_unavailable_bedrock_falls_back_to_groq_with_attribution(monkeypatch,code):
+    monkeypatch.setenv('GROQ_FALLBACK_ENABLED','true')
+    monkeypatch.setenv('GROQ_API_KEY','test-key')
+    monkeypatch.setenv('GROQ_MODEL','test-text-model')
+    groq=httpx.MockTransport(lambda r: httpx.Response(200,json={'choices':[{'finish_reason':'stop','message':{'content':'Summary.'}}]}))
+    result=providers.generate('Summary','Facts',client=FakeBedrock(error=AwsError(code)),transport=groq)
+    assert result.provider == 'groq' and result.fallback_used
+    assert result.primary_error == 'bedrock_'+code
 
 
 def test_disabled_fallback_preserves_primary_failure():

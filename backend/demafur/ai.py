@@ -9,7 +9,7 @@ from .ring import IntegrationError
 def summarize(snapshot):
     fallback = (f"Delivery {snapshot['id']}: {snapshot['status'].replace('_', ' ')}. "
                 + ' '.join(snapshot['risk']['reasons']))
-    if (os.getenv('AI_PROVIDER') or 'bedrock') == 'bedrock':
+    if (os.getenv('AI_PROVIDER') or 'bedrock') in ('bedrock', 'groq'):
         facts = {'status': snapshot['status'], 'risk': snapshot['risk'],
                  'events': [{'kind': e['kind'], 'occurred_at': e['occurred_at'], 'confidence': e['confidence']} for e in snapshot['timeline'][-100:]]}
         try:

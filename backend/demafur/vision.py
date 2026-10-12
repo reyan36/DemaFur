@@ -57,7 +57,7 @@ def sample_frames(clip, directory, duration_ms):
 def analyze(frames, transport=None):
     if os.getenv('DEMAFUR_VISION_ENABLED') != 'true':
         raise IntegrationError('vision_not_enabled')
-    if (os.getenv('AI_PROVIDER') or 'bedrock') == 'bedrock':
+    if (os.getenv('AI_PROVIDER') or 'bedrock') in ('bedrock', 'groq'):
         return analyze_bedrock(frames, transport=transport)
     if os.getenv('AI_PROVIDER') != 'openai':
         raise IntegrationError('unsupported_provider')
@@ -120,4 +120,6 @@ def analyze_bedrock(frames, transport=None, client=None):
     payload = result.model_dump()
     if inference.fallback_used:
         payload['limitations'].append('Groq fallback used at most three sampled frames; temporal coverage is reduced.')
+    elif inference.provider == 'groq':
+        payload['limitations'].append('Groq used at most three sampled frames; temporal coverage is reduced.')
     return {**payload, 'inference': inference.metadata()}
