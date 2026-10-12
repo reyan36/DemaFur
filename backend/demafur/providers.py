@@ -1,7 +1,11 @@
-"""Bedrock-first inference with an explicit, attributed Groq fallback.
+"""Bedrock-first inference with an attributed Groq fallback and a Groq test mode.
 
-Images/text go only to the configured provider. Fallback is opt-in and never
-bypasses refusals, invalid model output, or broken AWS credentials/configuration.
+AI_PROVIDER=bedrock (default): Bedrock first. If Bedrock is temporarily failing or
+unavailable to this account, Groq answers instead when GROQ_API_KEY is set
+(disable with GROQ_FALLBACK_ENABLED=false). Every fallback answer records
+fallback_used and the Bedrock error. Refusals and invalid model output are never
+routed around.
+AI_PROVIDER=groq: Groq only, for testing. Not AWS usage.
 """
 import base64
 import json
@@ -27,17 +31,37 @@ class Inference:
                 'usage': self.usage, 'frame_indices_sent': self.frame_indices,
                 'fallback_used': self.fallback_used, 'primary_error': self.primary_error}
 
+    # Bedrock errors meaning "Bedrock cannot be used right now" (missing setup, account or
+    # model access). Groq may answer instead; the Bedrock error is kept on the result.
+def fallback_enabled():
+        return os.getenv('GROQ_FALLBACK_ENABLED', 'true') != 'false'
+
+
+def groq_ready(vision=False):
+        return bool(os.getenv('GROQ_API_KEY') and os.getenv('GROQ_VISION_MODEL' if vision else 'GROQ_MODEL'))
+
+
+
+
+
+BEDROCK_UNAVAILABLE = ('bedrock_not_configured', 'bedrock_sdk_missing', 'bedrock_credentials_unavailable',
+                            'bedrock_AccessDeniedException', 'bedrock_ValidationException',
+                            'bedrock_ResourceNotFoundException')
+
 
 def configuration(vision=False):
     provider = os.getenv('AI_PROVIDER') or 'bedrock'
     if provider == 'bedrock':
         ready = bool(os.getenv('AWS_REGION') and os.getenv('BEDROCK_VISION_MODEL_ID' if vision else 'BEDROCK_MODEL_ID'))
+        ready = ready or (fallback_enabled() and groq_ready(vision))
+    elif provider == 'groq':
+        ready = groq_ready(vision)
     elif provider == 'openai':
         ready = bool(os.getenv('OPENAI_API_KEY') and os.getenv('OPENAI_VISION_MODEL' if vision else 'OPENAI_MODEL'))
     else:
         ready = False
     return {'provider': provider, 'configured': ready, 'credentials_verified': False,
-            'groq_fallback_enabled': os.getenv('GROQ_FALLBACK_ENABLED') == 'true'}
+            'groq_fallback_enabled': fallback_enabled(), 'groq_configured': groq_ready(vision)}
 
 
 def bedrock_client():
@@ -148,12 +172,16 @@ def groq(instructions, prompt, frames, schema, transport=None):
 
 
 def generate(instructions, prompt, frames=(), schema=None, client=None, transport=None):
-    if (os.getenv('AI_PROVIDER') or 'bedrock') != 'bedrock':
+    provider = os.getenv('AI_PROVIDER') or 'bedrock'
+    if provider == 'groq':
+        return groq(instructions, prompt, frames, schema, transport)
+    if provider != 'bedrock':
         raise IntegrationError('unsupported_provider')
     try:
         return bedrock(instructions, prompt, frames, schema, client)
     except IntegrationError as error:
-        if not error.retryable or os.getenv('GROQ_FALLBACK_ENABLED') != 'true':
+        can_fall_back = error.retryable or error.code in BEDROCK_UNAVAILABLE
+        if not can_fall_back or not fallback_enabled() or not groq_ready(vision=bool(frames)):
             raise
         result = groq(instructions, prompt, frames, schema, transport)
         result.fallback_used, result.primary_error = True, error.code
