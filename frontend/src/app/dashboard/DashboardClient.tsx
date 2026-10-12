@@ -188,6 +188,19 @@ export function DashboardClient({ initialStats, initialDeliveries }: DashboardCl
               {stats.integrations?.vision_configured ? "AWS Bedrock Active" : "Vision Sampling Ready"}
             </span>
           </div>
+
+          <div className="h-8 w-px bg-gray-200 hidden sm:block" />
+
+          <a
+            href="https://stats.uptimerobot.com/5q6oQH46Zd"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-gray-100 border border-gray-200 transition text-[11px] font-mono font-bold text-gray-700 hover:text-black shadow-xs"
+            title="View public UptimeRobot status page"
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Live Uptime ↗</span>
+          </a>
         </div>
       </div>
 

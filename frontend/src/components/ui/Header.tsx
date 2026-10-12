@@ -24,6 +24,17 @@ export function Header() {
               Dashboard
             </Link>
 
+            <a
+              href="https://stats.uptimerobot.com/5q6oQH46Zd"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden sm:flex items-center gap-1.5 text-xs font-mono text-gray-500 hover:text-black px-2.5 py-1 rounded-full bg-gray-50 hover:bg-gray-100 border border-gray-100 transition"
+              title="Live UptimeRobot Status"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Status</span>
+            </a>
+
             <div className="flex items-center space-x-3 border-l border-gray-100 pl-6">
               {user ? (
                 <div className="flex items-center gap-3">
@@ -32,7 +43,7 @@ export function Header() {
                   </span>
                   <button
                     onClick={() => logout()}
-                    className="text-xs font-medium text-gray-500 hover:text-black px-3 py-1.5 rounded-lg border border-gray-200 hover:border-black transition"
+                    className="text-xs font-medium text-gray-500 hover:text-black px-3 py-1.5 rounded-lg border border-gray-200 hover:border-black transition cursor-pointer"
                   >
                     Sign out
                   </button>

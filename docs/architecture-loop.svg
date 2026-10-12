@@ -1,0 +1,193 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 440" width="100%" height="100%">
+  <defs>
+    <style>
+      @keyframes flowData {
+        from { stroke-dashoffset: 40; }
+        to { stroke-dashoffset: 0; }
+      }
+      @keyframes pulseGlow {
+        0%, 100% { opacity: 0.3; transform: scale(0.98); }
+        50% { opacity: 0.8; transform: scale(1.02); }
+      }
+      @keyframes pulseDot {
+        0%, 100% { opacity: 0.2; r: 3px; }
+        50% { opacity: 1; r: 5px; }
+      }
+      @keyframes scanline {
+        0% { transform: translateY(0); }
+        100% { transform: translateY(440px); }
+      }
+      .flow-line {
+        stroke-dasharray: 6 6;
+        animation: flowData 1.2s linear infinite;
+      }
+      .flow-fast {
+        stroke-dasharray: 4 4;
+        animation: flowData 0.8s linear infinite;
+      }
+      .pulse-node {
+        transform-origin: center;
+        animation: pulseGlow 3s ease-in-out infinite;
+      }
+      .live-dot {
+        animation: pulseDot 2s ease-in-out infinite;
+      }
+      .tech-title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; font-size: 13px; font-weight: 700; fill: #FFFFFF; }
+      .tech-sub { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; font-size: 10px; font-weight: 500; fill: #94A3B8; }
+      .badge-text { font-family: monospace; font-size: 9px; font-weight: 700; }
+    </style>
+    
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#080C14"/>
+      <stop offset="50%" stop-color="#0D1322"/>
+      <stop offset="100%" stop-color="#05080E"/>
+    </linearGradient>
+
+    <linearGradient id="blueGlow" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#818CF8"/>
+    </linearGradient>
+
+    <linearGradient id="emeraldGlow" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="100%" stop-color="#10B981"/>
+    </linearGradient>
+
+    <linearGradient id="amberGlow" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#EF4444"/>
+    </linearGradient>
+
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.6"/>
+    </filter>
+
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="0.8" fill="#334155" opacity="0.4"/>
+    </pattern>
+  </defs>
+
+  <!-- Background Canvas -->
+  <rect width="900" height="440" rx="16" fill="url(#bgGrad)" stroke="#1E293B" stroke-width="1.5"/>
+  <rect width="900" height="440" fill="url(#grid)"/>
+
+  <!-- Live telemetry header bar -->
+  <g transform="translate(30, 28)">
+    <circle cx="6" cy="6" r="4" fill="#10B981" class="live-dot"/>
+    <text x="18" y="9" font-family="monospace" font-size="10" font-weight="700" fill="#34D399" letter-spacing="1">DEMAFUR REALTIME PIPELINE TELEMETRY</text>
+    <text x="730" y="9" font-family="monospace" font-size="10" font-weight="600" fill="#64748B">LATENCY &lt; 140ms · SHA-256</text>
+  </g>
+
+  <!-- Animated Connection Cables -->
+  <!-- Cable 1: Ring -> FastAPI -->
+  <path d="M 180 140 C 230 140, 230 200, 280 200" fill="none" stroke="#1E293B" stroke-width="3"/>
+  <path d="M 180 140 C 230 140, 230 200, 280 200" fill="none" stroke="url(#blueGlow)" stroke-width="2" class="flow-line"/>
+
+  <!-- Cable 2: FastAPI -> AI Engine -->
+  <path d="M 440 180 C 490 180, 490 120, 540 120" fill="none" stroke="#1E293B" stroke-width="3"/>
+  <path d="M 440 180 C 490 180, 490 120, 540 120" fill="none" stroke="url(#amberGlow)" stroke-width="2" class="flow-fast"/>
+
+  <!-- Cable 3: FastAPI -> Firestore -->
+  <path d="M 440 220 C 490 220, 490 290, 540 290" fill="none" stroke="#1E293B" stroke-width="3"/>
+  <path d="M 440 220 C 490 220, 490 290, 540 290" fill="none" stroke="url(#emeraldGlow)" stroke-width="2" class="flow-line"/>
+
+  <!-- Cable 4: AI Engine -> Firestore -->
+  <path d="M 620 170 L 620 230" fill="none" stroke="#1E293B" stroke-width="2" stroke-dasharray="3 3"/>
+
+  <!-- Cable 5: Firestore -> Dashboard -->
+  <path d="M 700 290 C 730 290, 730 240, 750 240" fill="none" stroke="#1E293B" stroke-width="3"/>
+  <path d="M 700 290 C 730 290, 730 240, 750 240" fill="none" stroke="url(#blueGlow)" stroke-width="2" class="flow-line"/>
+
+  <!-- Cable 6: Dashboard -> Evidence -->
+  <path d="M 810 290 C 810 330, 760 360, 710 360" fill="none" stroke="#1E293B" stroke-width="2"/>
+  <path d="M 810 290 C 810 330, 760 360, 710 360" fill="none" stroke="url(#emeraldGlow)" stroke-width="1.5" class="flow-fast"/>
+
+  <!-- ==================== NODES ==================== -->
+
+  <!-- Node 1: Ring Camera / Simulator -->
+  <g transform="translate(40, 80)" filter="url(#shadow)">
+    <rect width="145" height="120" rx="12" fill="#0F172A" stroke="#334155" stroke-width="1.5"/>
+    <rect x="10" y="10" width="32" height="32" rx="8" fill="#1E293B"/>
+    <!-- Camera Icon -->
+    <path d="M 20 23 L 24 20 L 32 20 L 36 23 L 38 23 C 39.1 23 40 23.9 40 25 L 40 33 C 40 34.1 39.1 35 38 35 L 18 35 C 16.9 35 16 34.1 16 33 L 16 25 C 16 23.9 16.9 23 18 23 Z M 28 32 C 30.2 32 32 30.2 32 28 C 32 25.8 30.2 24 28 24 C 25.8 24 24 25.8 24 28 C 24 30.2 25.8 32 28 32 Z" fill="#38BDF8"/>
+    
+    <text x="12" y="62" class="tech-title">Ring Hardware</text>
+    <text x="12" y="78" class="tech-sub">Live 1080p Optical Feed</text>
+    <text x="12" y="92" class="tech-sub">Motion &amp; Ring Events</text>
+
+    <rect x="12" y="100" width="76" height="14" rx="4" fill="#0284C7" fill-opacity="0.2"/>
+    <text x="17" y="110" class="badge-text" fill="#38BDF8">AMAZON RING</text>
+  </g>
+
+  <!-- Node 2: FastAPI Core Engine -->
+  <g transform="translate(280, 140)" filter="url(#shadow)">
+    <rect width="165" height="135" rx="14" fill="#0F172A" stroke="#3B82F6" stroke-width="1.8"/>
+    <rect x="12" y="12" width="34" height="34" rx="8" fill="#1E293B"/>
+    <!-- Engine/API Icon -->
+    <path d="M 23 23 L 35 23 L 35 35 L 23 35 Z M 21 29 L 17 29 M 39 29 L 35 29 M 29 21 L 29 17 M 29 39 L 29 35" stroke="#60A5FA" stroke-width="2.2" stroke-linecap="round"/>
+    
+    <text x="14" y="66" class="tech-title">DemaFur Engine</text>
+    <text x="14" y="82" class="tech-sub">FastAPI Microservice</text>
+    <text x="14" y="96" class="tech-sub">Behavioral Heuristics</text>
+    <text x="14" y="110" class="tech-sub">Trusted Pickup Windows</text>
+
+    <rect x="14" y="118" width="94" height="14" rx="4" fill="#3B82F6" fill-opacity="0.2"/>
+    <text x="19" y="128" class="badge-text" fill="#60A5FA">RENDER HOSTED</text>
+  </g>
+
+  <!-- Node 3: AI Engine (Bedrock / Groq) -->
+  <g transform="translate(540, 60)" filter="url(#shadow)">
+    <rect width="165" height="120" rx="14" fill="#0F172A" stroke="#F59E0B" stroke-width="1.8"/>
+    <rect x="12" y="12" width="34" height="34" rx="8" fill="#1E293B"/>
+    <!-- Brain / AI Icon -->
+    <path d="M 24 23 C 21 25, 21 31, 24 33 C 27 34, 31 34, 34 33 C 37 31, 37 25, 34 23 C 31 22, 27 22, 24 23 Z" stroke="#FBBF24" stroke-width="2" fill="none"/>
+    <circle cx="29" cy="28" r="2" fill="#FBBF24"/>
+    
+    <text x="14" y="64" class="tech-title">Multimodal AI</text>
+    <text x="14" y="79" class="tech-sub">AWS Bedrock (Claude 3.5)</text>
+    <text x="14" y="92" class="tech-sub">Groq Fallback (Qwen 2.5)</text>
+
+    <rect x="14" y="100" width="105" height="14" rx="4" fill="#F59E0B" fill-opacity="0.2"/>
+    <text x="19" y="110" class="badge-text" fill="#FBBF24">ZERO-IDENTITY LOGIC</text>
+  </g>
+
+  <!-- Node 4: Database (Firebase Firestore) -->
+  <g transform="translate(540, 230)" filter="url(#shadow)">
+    <rect width="165" height="115" rx="14" fill="#0F172A" stroke="#10B981" stroke-width="1.8"/>
+    <rect x="12" y="12" width="34" height="34" rx="8" fill="#1E293B"/>
+    <!-- Database Icon -->
+    <ellipse cx="29" cy="22" rx="10" ry="4" stroke="#34D399" stroke-width="1.8" fill="none"/>
+    <path d="M 19 22 L 19 32 C 19 34.2, 23.5 36, 29 36 C 34.5 36, 39 34.2, 39 32 L 39 22" stroke="#34D399" stroke-width="1.8" fill="none"/>
+    <path d="M 19 27 C 19 29.2, 23.5 31, 29 31 C 34.5 31, 39 29.2, 39 27" stroke="#34D399" stroke-width="1.8" fill="none"/>
+
+    <text x="14" y="62" class="tech-title">Firebase Firestore</text>
+    <text x="14" y="78" class="tech-sub">Event Telemetry Store</text>
+    <text x="14" y="91" class="tech-sub">Realtime Audit Logs</text>
+
+    <rect x="14" y="98" width="90" height="14" rx="4" fill="#10B981" fill-opacity="0.2"/>
+    <text x="19" y="108" class="badge-text" fill="#34D399">GOOGLE CLOUD DB</text>
+  </g>
+
+  <!-- Node 5: Frontend Dashboard (Vercel) -->
+  <g transform="translate(745, 160)" filter="url(#shadow)">
+    <rect width="135" height="130" rx="14" fill="#0F172A" stroke="#E2E8F0" stroke-width="1.8"/>
+    <rect x="12" y="12" width="34" height="34" rx="8" fill="#1E293B"/>
+    <!-- Layout / Next.js triangle -->
+    <path d="M 29 18 L 39 34 L 19 34 Z" fill="#FFFFFF"/>
+    
+    <text x="14" y="64" class="tech-title">Next.js 16 UI</text>
+    <text x="14" y="80" class="tech-sub">Owner Decision Hub</text>
+    <text x="14" y="94" class="tech-sub">Live CCTV Overlays</text>
+
+    <rect x="14" y="104" width="85" height="14" rx="4" fill="#FFFFFF" fill-opacity="0.15"/>
+    <text x="19" y="114" class="badge-text" fill="#FFFFFF">VERCEL LIVE</text>
+  </g>
+
+  <!-- Node 6: Evidence Bundle -->
+  <g transform="translate(540, 360)" filter="url(#shadow)">
+    <rect width="180" height="60" rx="10" fill="#0F172A" stroke="#334155" stroke-width="1.2"/>
+    <text x="16" y="26" class="tech-title" font-size="11">Evidence Bundle Export</text>
+    <text x="16" y="44" class="tech-sub">SHA-256 Manifest + MP4 Clip ZIP</text>
+  </g>
+
+</svg>
