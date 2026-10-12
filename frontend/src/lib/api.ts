@@ -28,7 +28,8 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   try {
     const res = await fetch(`${API_BASE_URL}/v1/dashboard`, {
       headers: authHeaders(),
-      cache: 'no-store'
+      cache: 'no-store',
+      signal: AbortSignal.timeout(4000),
     });
 
     if (!res.ok) {
@@ -52,7 +53,7 @@ function fallbackDashboardStats(): DashboardStats {
     recentActivity: [],
     activeDeliveries: [],
     monitoringStatus: 'offline',
-    monitoringReason: 'Could not connect to backend API'
+    monitoringReason: 'Connecting to security hub...'
   };
 }
 
@@ -65,7 +66,8 @@ export async function getAllDeliveries(limit = 50, offset = 0): Promise<Delivery
   try {
     const res = await fetch(`${API_BASE_URL}/v1/deliveries?limit=${limit}&offset=${offset}`, {
       headers: authHeaders(),
-      cache: 'no-store'
+      cache: 'no-store',
+      signal: AbortSignal.timeout(4000),
     });
     if (!res.ok) return [];
     const data = await res.json();
@@ -80,7 +82,8 @@ export async function getDelivery(id: string): Promise<Delivery | null> {
   try {
     const res = await fetch(`${API_BASE_URL}/v1/deliveries/${id}`, {
       headers: authHeaders(),
-      cache: 'no-store'
+      cache: 'no-store',
+      signal: AbortSignal.timeout(6000),
     });
     if (!res.ok) return null;
     return await res.json();
