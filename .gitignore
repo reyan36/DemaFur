@@ -1,0 +1,6 @@
+# Edge detector: local environment, videos and model weights
+edge/.venv/
+edge/videos/
+edge/*.pt
+edge/*.ts
+edge/.env
