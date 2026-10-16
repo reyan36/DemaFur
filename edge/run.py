@@ -11,6 +11,7 @@ from detector import Detector
 from scene import Scene
 from source import Source
 from porch import Porch
+from stream import LiveStream
 
 # OpenCV colours are BGR (blue, green, red).
 COLOURS = {'person': (0, 200, 255), 'car': (255, 160, 0), 'package': (80, 220, 80)}
@@ -32,6 +33,7 @@ def main():
     parser.add_argument('--backend', default=os.getenv('DEMAFUR_URL', 'http://127.0.0.1:8000'), help='DemaFur backend URL')
     parser.add_argument('--delivery', default=f'edge-{uuid.uuid4().hex[:8]}', help='delivery ID for this run')
     parser.add_argument('--camera', default='front-door', help='camera ID')
+    parser.add_argument('--port', type=int, default=8090, help='port for the live view')
     args = parser.parse_args()
 
     door = [int(v) for v in args.door.split(',')] if args.door else None
@@ -40,6 +42,7 @@ def main():
     scene = Scene(linger_seconds=args.linger, door=door)
     secret = os.getenv('DEMAFUR_WEBHOOK_SECRET')
     porch = Porch()
+    live = LiveStream(args.port)
     bridge = Bridge(args.backend, secret, args.delivery, args.camera,
                     on_deterrents=porch.trigger) if secret else None
     print(f'Delivery {args.delivery}: ' + (f'sending events to {args.backend}' if bridge
@@ -77,6 +80,7 @@ def main():
         cv2.putText(frame, f'LIVE {t:5.1f}s   {last_event}', (10, 22),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
         cv2.imshow('DemaFur edge', frame)
+        live.publish(frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
     for event in scene.finish(t):
