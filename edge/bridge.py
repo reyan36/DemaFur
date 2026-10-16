@@ -16,7 +16,7 @@ CONFIDENCE = {'package_delivered': 0.8, 'person_approached': 0.85, 'person_linge
 
 
 class Bridge:
-    def __init__(self, url, secret, delivery_id, camera_id='front-door'):
+    def __init__(self, url, secret, delivery_id, camera_id='front-door', on_deterrents=None):
         self.url = url.rstrip('/') + '/v1/webhooks/events'
         self.secret = secret.encode()
         self.delivery_id, self.camera_id = delivery_id, camera_id
@@ -25,6 +25,7 @@ class Bridge:
         self.outbox = queue.Queue()
         self.worker = threading.Thread(target=self._run, daemon=True)
         self.worker.start()
+        self.on_deterrents = on_deterrents
 
     def send(self, event):
         """Queue an event; returns immediately so the video never waits for the network."""
@@ -60,6 +61,10 @@ class Bridge:
                     risk = response.json().get('delivery', {}).get('risk', {}) if response.is_success else {}
                     print(f'  -> backend {response.status_code} {payload["kind"]}'
                           + (f'  risk={risk.get("level")} ({risk.get("score")})' if risk else f'  {response.text[:120]}'))
+                    if response.is_success and self.on_deterrents:
+                        actions = response.json()['delivery'].get('auto_deterrents') or []
+                        if actions:
+                            self.on_deterrents(actions)
                 except httpx.HTTPError as error:
                     print(f'  -> backend unreachable ({type(error).__name__}); {payload["kind"]} not sent')
 

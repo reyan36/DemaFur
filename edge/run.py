@@ -10,6 +10,7 @@ from bridge import Bridge
 from detector import Detector
 from scene import Scene
 from source import Source
+from porch import Porch
 
 # OpenCV colours are BGR (blue, green, red).
 COLOURS = {'person': (0, 200, 255), 'car': (255, 160, 0), 'package': (80, 220, 80)}
@@ -38,7 +39,9 @@ def main():
     detector = Detector()
     scene = Scene(linger_seconds=args.linger, door=door)
     secret = os.getenv('DEMAFUR_WEBHOOK_SECRET')
-    bridge = Bridge(args.backend, secret, args.delivery, args.camera) if secret else None
+    porch = Porch()
+    bridge = Bridge(args.backend, secret, args.delivery, args.camera,
+                    on_deterrents=porch.trigger) if secret else None
     print(f'Delivery {args.delivery}: ' + (f'sending events to {args.backend}' if bridge
                                            else 'DEMAFUR_WEBHOOK_SECRET not set, events are only printed'))
     next_search, last_event = 0.0, ''
@@ -69,7 +72,7 @@ def main():
             touched = item['label'] == 'person' and scene.people.get(item['id'], {}).get('touched')
             name = item['label'] + (f" #{item['id']}" if item['id'] else '')
             draw_box(frame, item['box'], RED if touched else COLOURS[item['label']], name)
-
+        porch.draw(frame)
         cv2.rectangle(frame, (0, 0), (frame.shape[1], 32), (0, 0, 0), -1)
         cv2.putText(frame, f'LIVE {t:5.1f}s   {last_event}', (10, 22),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
