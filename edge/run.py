@@ -1,9 +1,12 @@
 """DemaFur edge detector. Step 3: live boxes plus doorstep events."""
 import argparse
 import json
+import os
+import uuid
 
 import cv2
 
+from bridge import Bridge
 from detector import Detector
 from scene import Scene
 from source import Source
@@ -25,12 +28,19 @@ def main():
     parser.add_argument('--loop', action='store_true', help='replay the file when it ends')
     parser.add_argument('--linger', type=float, default=90, help='seconds near the package that count as lingering')
     parser.add_argument('--door', help='house entrance area as x1,y1,x2,y2 (pixels)')
+    parser.add_argument('--backend', default=os.getenv('DEMAFUR_URL', 'http://127.0.0.1:8000'), help='DemaFur backend URL')
+    parser.add_argument('--delivery', default=f'edge-{uuid.uuid4().hex[:8]}', help='delivery ID for this run')
+    parser.add_argument('--camera', default='front-door', help='camera ID')
     args = parser.parse_args()
 
     door = [int(v) for v in args.door.split(',')] if args.door else None
     camera = Source(args.source, loop=args.loop)
     detector = Detector()
     scene = Scene(linger_seconds=args.linger, door=door)
+    secret = os.getenv('DEMAFUR_WEBHOOK_SECRET')
+    bridge = Bridge(args.backend, secret, args.delivery, args.camera) if secret else None
+    print(f'Delivery {args.delivery}: ' + (f'sending events to {args.backend}' if bridge
+                                           else 'DEMAFUR_WEBHOOK_SECRET not set, events are only printed'))
     next_search, last_event = 0.0, ''
     t = 0.0
 
@@ -44,6 +54,8 @@ def main():
 
         for event in events:
             print(json.dumps(event))
+            if bridge:
+                bridge.send(event)
             last_event = f"{event['t']:.1f}s  {event['kind'].replace('_', ' ').upper()}"
 
         # Draw: the door area, the package (green, red once removed), people (red if they touched it).
@@ -66,8 +78,10 @@ def main():
             break
     for event in scene.finish(t):
         print(json.dumps(event))
-    cv2.destroyAllWindows()
-
+        if bridge:
+            bridge.send(event)
+    if bridge:
+        bridge.close()
 
 if __name__ == '__main__':
     main()
