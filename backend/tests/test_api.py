@@ -263,3 +263,18 @@ def test_docs_bearer_auth_and_readiness(client):
         response = client.get('/ready', headers={'Authorization': value})
         assert response.status_code == 401
         assert response.headers['www-authenticate'] == 'Bearer'
+
+def test_edge_detector_events_are_accepted(client):
+    send(client, kind='package_delivered', eid='e1')
+    send(client, kind='package_touched', eid='e2',
+         observations={'track_id': 5, 'box': [486, 223, 608, 394]})
+    delivery = send(client, kind='person_left', eid='e3',
+                    observations={'track_id': 5, 'carried_package': True, 'came_from_door': False})
+    kinds = [e['kind'] for e in delivery['timeline']]
+    assert kinds == ['package_delivered', 'package_touched', 'person_left']
+    assert delivery['timeline'][2]['observations']['carried_package'] is True
+
+
+def test_edge_detector_box_must_have_four_numbers(client):
+    bad = event(kind='package_touched', observations={'box': [1, 2, 3]})
+    assert client.post('/v1/events', json=bad).status_code == 422
