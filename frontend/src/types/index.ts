@@ -18,6 +18,7 @@ export interface Event {
 
 export interface RiskAssessment {
   level: 'normal' | 'needs_confirmation' | 'suspicious' | 'high_risk';
+  score?: number;
   reasons: string[];
 }
 

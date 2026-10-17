@@ -81,9 +81,9 @@ export function DashboardClient({ initialStats, initialDeliveries }: DashboardCl
   // If loading authentication state
   if (authLoading) {
     return (
-      <div className="min-h-[70vh] flex flex-col items-center justify-center gap-3">
+      <div className="min-h-[75vh] flex flex-col items-center justify-center gap-3 bg-gray-50/40">
         <div className="w-8 h-8 rounded-full border-2 border-black border-t-transparent animate-spin" />
-        <span className="text-xs font-mono text-gray-400">Verifying security session...</span>
+        <span className="text-xs font-mono text-gray-500">Verifying household security session...</span>
       </div>
     );
   }
@@ -91,9 +91,9 @@ export function DashboardClient({ initialStats, initialDeliveries }: DashboardCl
   // If not logged in and not in guest bypass mode: Protected screen requiring Google Login
   if (!user && !guestMode) {
     return (
-      <div className="min-h-[80vh] flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white border border-gray-100 rounded-3xl p-8 sm:p-10 shadow-sm text-center space-y-6">
-          <div className="w-16 h-16 rounded-2xl bg-black text-white flex items-center justify-center mx-auto shadow-md">
+      <div className="min-h-[82vh] flex items-center justify-center p-4 bg-gradient-to-b from-white to-gray-50/60">
+        <div className="max-w-md w-full bg-white border border-gray-200/80 rounded-3xl p-8 sm:p-10 shadow-xl shadow-gray-900/5 text-center space-y-6">
+          <div className="w-16 h-16 rounded-2xl bg-zinc-950 text-white flex items-center justify-center mx-auto shadow-md">
             <svg className="w-8 h-8 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
             </svg>
@@ -118,7 +118,7 @@ export function DashboardClient({ initialStats, initialDeliveries }: DashboardCl
           <button
             disabled={googleLoginLoading}
             onClick={handleGoogleLogin}
-            className="w-full flex items-center justify-center gap-3 bg-white hover:bg-gray-50 text-black font-bold py-3 px-4 rounded-2xl border border-gray-200 shadow-sm transition text-sm cursor-pointer disabled:opacity-60"
+            className="w-full flex items-center justify-center gap-3 bg-white hover:bg-gray-50 text-black font-bold py-3 px-4 rounded-2xl border border-gray-200 shadow-xs transition text-sm cursor-pointer disabled:opacity-60"
           >
             {googleLoginLoading ? (
               <>
@@ -152,13 +152,13 @@ export function DashboardClient({ initialStats, initialDeliveries }: DashboardCl
 
           <div className="flex items-center justify-between text-xs text-gray-400 pt-2 border-t border-gray-100">
             <Link href="/login" className="text-gray-600 font-bold hover:underline">
-              Email login
+              Email login / Password reset
             </Link>
             <button
               onClick={() => setGuestMode(true)}
               className="text-gray-400 hover:text-black font-mono transition underline cursor-pointer"
             >
-              Continue as Guest (Dev Bypass)
+              Continue as Guest
             </button>
           </div>
         </div>
@@ -169,139 +169,175 @@ export function DashboardClient({ initialStats, initialDeliveries }: DashboardCl
   const monitoringStatus = stats.monitoringStatus || "offline";
 
   return (
-    <div className="space-y-10 max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
-      {/* Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-gray-100 pb-8">
-        <div>
-          <div className="flex flex-wrap items-center gap-2 mb-1">
-            <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-600 font-bold bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-              Authenticated · {user?.displayName || user?.email || "Guest Mode (Dev)"}
-            </span>
-            {refreshing && (
-              <span className="inline-flex items-center gap-1.5 text-[10px] font-mono text-gray-500 bg-gray-50 px-2.5 py-0.5 rounded-full border border-gray-200">
-                <span className="w-2.5 h-2.5 rounded-full border-2 border-black border-t-transparent animate-spin" />
-                Syncing live telemetry...
+    <div className="min-h-screen bg-gray-50/40 pb-16">
+      {/* Top Command Header */}
+      <div className="bg-white border-b border-gray-200/80">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-emerald-700 font-bold bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                {user?.displayName || user?.email || "Guest Session"}
               </span>
-            )}
+              <span className="text-[10px] font-mono uppercase tracking-wider text-gray-500 bg-gray-100 px-2.5 py-0.5 rounded-full">
+                Zero-Identity Behavioral Protection
+              </span>
+              {refreshing && (
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-mono text-zinc-700 bg-zinc-100 px-2.5 py-0.5 rounded-full border border-zinc-200">
+                  <span className="w-2.5 h-2.5 rounded-full border-2 border-black border-t-transparent animate-spin" />
+                  Syncing telemetry...
+                </span>
+              )}
+            </div>
+            <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-zinc-950">
+              Security Command Center
+            </h1>
+            <p className="text-xs sm:text-sm text-gray-500 font-medium">
+              Real-time optical doorstep supervision, trusted pickup windows, and forensic evidence packaging.
+            </p>
           </div>
-          <h1 className="text-4xl font-black tracking-tight text-black">
-            Security Dashboard
-          </h1>
-          <p className="mt-1 text-sm text-gray-500 font-medium">
-            AI-supervised doorstep monitoring and parcel theft defense.
-          </p>
-        </div>
 
-        {/* Live System Status Widget */}
-        <div className="flex items-center gap-4 bg-gray-50 border border-gray-100 rounded-2xl p-4 self-start md:self-auto">
-          <div className="flex items-center gap-2.5">
-            <span
-              className={`w-3 h-3 rounded-full ${
-                monitoringStatus === "healthy"
-                  ? "bg-emerald-500"
-                  : monitoringStatus === "warning"
-                  ? "bg-amber-500"
-                  : "bg-red-500"
-              } animate-pulse`}
-            />
+          {/* Live System Status Widget */}
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4 bg-gray-50/80 border border-gray-200/80 rounded-2xl p-3.5 sm:p-4 self-start lg:self-auto">
+            <div className="flex items-center gap-2.5">
+              <span
+                className={`w-2.5 h-2.5 rounded-full ${
+                  monitoringStatus === "healthy"
+                    ? "bg-emerald-500"
+                    : monitoringStatus === "warning"
+                    ? "bg-amber-500"
+                    : "bg-emerald-500"
+                } animate-pulse`}
+              />
+              <div>
+                <span className="text-[9px] font-mono uppercase tracking-wider text-gray-400 block">
+                  Ring Hub
+                </span>
+                <span className="text-xs font-mono font-bold uppercase text-zinc-900">
+                  {monitoringStatus === "warning"
+                    ? "Staging / Active"
+                    : monitoringStatus === "offline"
+                    ? "Simulated / Ready"
+                    : monitoringStatus.toUpperCase()}
+                </span>
+              </div>
+            </div>
+
+            <div className="h-7 w-px bg-gray-200" />
+
             <div>
-              <span className="text-[10px] font-mono uppercase tracking-wider text-gray-400 block">
-                Ring Hub Status
+              <span className="text-[9px] font-mono uppercase tracking-wider text-gray-400 block">
+                Vision Engine
               </span>
-              <span className="text-xs font-mono font-bold uppercase text-black">
-                {monitoringStatus === "warning"
-                  ? "Staging / Active"
-                  : monitoringStatus.toUpperCase()}
+              <span className="text-xs font-mono font-bold uppercase text-zinc-900">
+                {stats.integrations?.vision_configured ? "Bedrock / Groq Active" : "Heuristics + AI Ready"}
               </span>
             </div>
+
+            <div className="h-7 w-px bg-gray-200" />
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={refreshing}
+                onClick={refreshData}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-gray-100 border border-gray-200 transition text-[11px] font-mono font-bold text-zinc-800 hover:text-black shadow-2xs disabled:opacity-50 cursor-pointer"
+                title="Refresh dashboard telemetry"
+              >
+                <svg
+                  className={`w-3.5 h-3.5 ${refreshing ? "animate-spin text-black" : "text-gray-500"}`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span>{refreshing ? "Syncing" : "Refresh"}</span>
+              </button>
+
+              <a
+                href="https://stats.uptimerobot.com/5q6oQH46Zd"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-gray-100 border border-gray-200 transition text-[11px] font-mono font-bold text-zinc-700 hover:text-black shadow-2xs"
+                title="View public UptimeRobot status page"
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Uptime ↗</span>
+              </a>
+            </div>
           </div>
-
-          <div className="h-8 w-px bg-gray-200" />
-
-          <div>
-            <span className="text-[10px] font-mono uppercase tracking-wider text-gray-400 block">
-              Optical AI
-            </span>
-            <span className="text-xs font-mono font-bold uppercase text-black">
-              {stats.integrations?.vision_configured ? "AWS Bedrock Active" : "Vision Sampling Ready"}
-            </span>
-          </div>
-
-          <div className="h-8 w-px bg-gray-200 hidden sm:block" />
-
-          <button
-            type="button"
-            disabled={refreshing}
-            onClick={refreshData}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-gray-100 border border-gray-200 transition text-[11px] font-mono font-bold text-gray-700 hover:text-black shadow-xs disabled:opacity-50 cursor-pointer"
-            title="Refresh dashboard telemetry"
-          >
-            <svg
-              className={`w-3.5 h-3.5 ${refreshing ? "animate-spin text-black" : "text-gray-500"}`}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            <span className="hidden sm:inline">{refreshing ? "Syncing" : "Refresh"}</span>
-          </button>
-
-          <a
-            href="https://stats.uptimerobot.com/5q6oQH46Zd"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-gray-100 border border-gray-200 transition text-[11px] font-mono font-bold text-gray-700 hover:text-black shadow-xs"
-            title="View public UptimeRobot status page"
-          >
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Live Uptime ↗</span>
-          </a>
         </div>
       </div>
 
-      {/* Camera Controls & Simulation Tools */}
-      <CameraControls
-        onEventCreated={refreshData}
-        onClearAll={() => {
-          setDeliveries([]);
-          refreshData();
-        }}
-      />
-
-      {/* Top Stats Row */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Active Packages" value={stats.activePackages} />
-        <StatCard
-          title="Needs Confirmation"
-          value={stats.pendingConfirmations}
-          status={stats.pendingConfirmations > 0 ? "warning" : "default"}
+      {/* Main Dashboard Container */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-6">
+        {/* Camera Controls & Simulation Command Bar */}
+        <CameraControls
+          onEventCreated={refreshData}
+          onClearAll={() => {
+            setDeliveries([]);
+            refreshData();
+          }}
         />
-        <StatCard
-          title="Active Incidents"
-          value={stats.activeIncidents}
-          status={stats.activeIncidents > 0 ? "danger" : "success"}
-        />
-        <StatCard title="Historical Packages" value={stats.historicalPackages} />
-      </div>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 items-start">
-        {/* Left Column: Deliveries (7 cols) */}
-        <div className="lg:col-span-7 space-y-6">
-          <PackageList
-            deliveries={deliveries}
-            loading={initialLoading || refreshing}
-            onDeleted={(deletedId) => {
-              setDeliveries((prev) => prev.filter((d) => d.id !== deletedId));
-              refreshData();
-            }}
+        {/* Top KPI Stats Row */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            title="Active Packages"
+            value={stats.activePackages}
+            subtitle="Monitored on doorstep"
+            icon="package"
+            status={stats.activePackages > 0 ? "success" : "default"}
+            loading={initialLoading}
+          />
+          <StatCard
+            title="Needs Confirmation"
+            value={stats.pendingConfirmations}
+            subtitle="Awaiting owner review"
+            icon="clock"
+            status={stats.pendingConfirmations > 0 ? "warning" : "default"}
+            loading={initialLoading}
+          />
+          <StatCard
+            title="Active Incidents"
+            value={stats.activeIncidents}
+            subtitle="Confirmed missing / alert"
+            icon="alert"
+            status={stats.activeIncidents > 0 ? "danger" : "default"}
+            loading={initialLoading}
+          />
+          <StatCard
+            title="Historical Packages"
+            value={stats.historicalPackages}
+            subtitle="Collected & archived"
+            icon="archive"
+            status="default"
+            loading={initialLoading}
           />
         </div>
 
-        {/* Right Column: Activity Feed (5 cols) */}
-        <div className="lg:col-span-5 space-y-6">
-          <ActivityList events={stats.recentActivity} />
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 items-start">
+          {/* Left Column: Deliveries (7 cols) */}
+          <div className="lg:col-span-7 space-y-6">
+            <PackageList
+              deliveries={deliveries}
+              loading={initialLoading || refreshing}
+              onDeleted={(deletedId) => {
+                setDeliveries((prev) => prev.filter((d) => d.id !== deletedId));
+                refreshData();
+              }}
+            />
+          </div>
+
+          {/* Right Column: Activity Feed (5 cols) */}
+          <div className="lg:col-span-5 space-y-6">
+            <ActivityList
+              events={stats.recentActivity}
+              loading={initialLoading}
+            />
+          </div>
         </div>
       </div>
     </div>

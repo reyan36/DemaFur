@@ -1,11 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { SurveillanceView } from "@/components/video/SurveillanceView";
 
 // 4 Realistic Video Scenarios with AI explanations
-// Place your .mp4 files in frontend/public/videos/ — these play as the live camera feed
 export const CAMERA_SCENARIOS = [
   {
     id: "porch_pirate_theft",
@@ -55,9 +53,9 @@ interface CameraControlsProps {
 }
 
 export function CameraControls({ onEventCreated, onClearAll }: CameraControlsProps) {
-  const router = useRouter();
   const [simulating, setSimulating] = useState(false);
   const [purging, setPurging] = useState(false);
+  const [selectedPreset, setSelectedPreset] = useState<string>("random");
   const [showRingModal, setShowRingModal] = useState(false);
   const [activeScenario, setActiveScenario] = useState<typeof CAMERA_SCENARIOS[0] | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -75,8 +73,11 @@ export function CameraControls({ onEventCreated, onClearAll }: CameraControlsPro
     setNotice(null);
     setError(null);
 
-    // Pick 1 of 4 scenarios randomly
-    const scenario = CAMERA_SCENARIOS[Math.floor(Math.random() * CAMERA_SCENARIOS.length)];
+    // Pick scenario (random or user-selected preset)
+    const scenario =
+      selectedPreset === "random"
+        ? CAMERA_SCENARIOS[Math.floor(Math.random() * CAMERA_SCENARIOS.length)]
+        : CAMERA_SCENARIOS.find((s) => s.id === selectedPreset) || CAMERA_SCENARIOS[0];
     setActiveScenario(scenario);
 
     const parcelId = `pkg-${scenario.id.slice(0, 5)}-${Math.random().toString(36).substring(2, 7)}`;
@@ -143,7 +144,7 @@ export function CameraControls({ onEventCreated, onClearAll }: CameraControlsPro
         });
       }
 
-      setNotice(`Camera triggered: ${scenario.title} recorded & analyzed!`);
+      setNotice(`Camera triggered: ${scenario.title} (${parcelId.toUpperCase()}) recorded & analyzed!`);
       if (onEventCreated) onEventCreated();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Simulation request failed");
@@ -177,7 +178,7 @@ export function CameraControls({ onEventCreated, onClearAll }: CameraControlsPro
         return;
       }
 
-      // 2. Fallback: If Render has not redeployed the purge endpoint yet, delete item-by-item
+      // 2. Fallback: If Render has not redeployed the purge endpoint yet, delete item-by-item in parallel
       const listRes = await fetch(`${API_URL}/v1/deliveries?limit=100`, { headers });
       if (listRes.ok) {
         const data = await listRes.json();
@@ -206,63 +207,98 @@ export function CameraControls({ onEventCreated, onClearAll }: CameraControlsPro
   return (
     <div className="space-y-4">
       {notice && (
-        <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex justify-between items-center">
-          <span>{notice}</span>
-          <button onClick={() => setNotice(null)} className="text-emerald-600 hover:text-emerald-900 font-bold cursor-pointer">×</button>
+        <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex justify-between items-center shadow-2xs">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span>{notice}</span>
+          </div>
+          <button onClick={() => setNotice(null)} className="text-emerald-600 hover:text-emerald-900 font-bold cursor-pointer px-1">×</button>
         </div>
       )}
 
       {error && (
-        <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs font-semibold flex justify-between items-center">
+        <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs font-semibold flex justify-between items-center shadow-2xs">
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="text-red-600 hover:text-red-900 font-bold cursor-pointer">×</button>
+          <button onClick={() => setError(null)} className="text-red-600 hover:text-red-900 font-bold cursor-pointer px-1">×</button>
         </div>
       )}
 
-      {/* Action Buttons Row */}
-      <div className="flex flex-wrap items-center gap-3">
-        {/* Primary Simulate Camera Button */}
-        <button
-          type="button"
-          disabled={simulating || purging}
-          onClick={handleSimulateCamera}
-          className="px-5 py-2.5 rounded-xl text-xs font-bold bg-black text-white hover:bg-zinc-800 transition flex items-center gap-2 shadow-sm disabled:opacity-50 cursor-pointer"
-        >
-          {simulating ? (
-            <span className="w-4 h-4 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin" />
-          ) : (
-            <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+      {/* Command Bar Card */}
+      <div className="bg-white border border-gray-200/80 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono font-bold uppercase tracking-wider text-zinc-900">
+              Hardware &amp; Optical Simulation
+            </span>
+            <span className="text-[10px] font-mono bg-zinc-100 text-zinc-600 px-2 py-0.5 rounded-md border border-zinc-200/70">
+              ring-front-door-cam
+            </span>
+          </div>
+          <p className="text-xs text-gray-500">
+            Trigger realistic doorstep events or connect your physical Amazon Ring hardware.
+          </p>
+        </div>
+
+        {/* Action Buttons Row */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Scenario Selector */}
+          <select
+            value={selectedPreset}
+            onChange={(e) => setSelectedPreset(e.target.value)}
+            disabled={simulating || purging}
+            className="px-3 py-2.5 rounded-xl text-xs font-semibold bg-gray-50 text-zinc-800 border border-gray-200 hover:border-gray-300 outline-none transition cursor-pointer"
+            title="Choose simulation scenario"
+          >
+            <option value="random">🎲 Random Scenario (All 4)</option>
+            <option value="porch_pirate_theft">🚨 Porch Pirate Theft</option>
+            <option value="suspicious_lingering">⚠️ Suspicious Lingering (95s)</option>
+            <option value="standard_delivery">📦 Safe Courier Drop-Off</option>
+            <option value="authorized_pickup">✓ Authorized Window Pickup</option>
+          </select>
+
+          {/* Primary Simulate Camera Button */}
+          <button
+            type="button"
+            disabled={simulating || purging}
+            onClick={handleSimulateCamera}
+            className="px-4 py-2.5 rounded-xl text-xs font-bold bg-zinc-950 text-white hover:bg-zinc-800 transition flex items-center gap-2 shadow-xs disabled:opacity-50 cursor-pointer"
+          >
+            {simulating ? (
+              <span className="w-4 h-4 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin" />
+            ) : (
+              <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            )}
+            {simulating ? "Simulating Feed..." : "Simulate a Camera"}
+          </button>
+
+          {/* Link Original Ring Camera Button */}
+          <button
+            type="button"
+            onClick={() => setShowRingModal(true)}
+            className="px-3.5 py-2.5 rounded-xl text-xs font-bold bg-white text-zinc-900 border border-gray-200 hover:border-zinc-900 transition flex items-center gap-2 shadow-2xs cursor-pointer"
+          >
+            <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
             </svg>
-          )}
-          {simulating ? "Triggering Camera Observation..." : "Simulate a Camera"}
-        </button>
+            <span>Link Ring Camera</span>
+          </button>
 
-        {/* Link Original Ring Camera Button */}
-        <button
-          type="button"
-          onClick={() => setShowRingModal(true)}
-          className="px-4 py-2.5 rounded-xl text-xs font-bold bg-white text-black border border-gray-200 hover:border-black transition flex items-center gap-2 shadow-sm cursor-pointer"
-        >
-          <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-          </svg>
-          Link Original Ring Camera
-        </button>
-
-        {/* Clear Data Button */}
-        <button
-          type="button"
-          disabled={purging || simulating}
-          onClick={handlePurgeAll}
-          className="px-3.5 py-2.5 rounded-xl text-xs font-semibold text-gray-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
-          title="Purge all test packages"
-        >
-          {purging && (
-            <span className="w-3.5 h-3.5 rounded-full border-2 border-red-500 border-t-transparent animate-spin" />
-          )}
-          {purging ? "Resetting..." : "Reset Data"}
-        </button>
+          {/* Clear Data Button */}
+          <button
+            type="button"
+            disabled={purging || simulating}
+            onClick={handlePurgeAll}
+            className="px-3 py-2.5 rounded-xl text-xs font-semibold text-gray-500 hover:text-red-600 hover:bg-red-50 border border-gray-200/70 hover:border-red-200 transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+            title="Purge all test packages"
+          >
+            {purging && (
+              <span className="w-3.5 h-3.5 rounded-full border-2 border-red-500 border-t-transparent animate-spin" />
+            )}
+            {purging ? "Resetting..." : "Reset Data"}
+          </button>
+        </div>
       </div>
 
       {/* Active Scenario Details Overlay (if recently triggered) */}
@@ -271,7 +307,7 @@ export function CameraControls({ onEventCreated, onClearAll }: CameraControlsPro
           <div className="flex items-start justify-between gap-4">
             <div>
               <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400 font-bold block mb-1">
-                Camera Feed Active · Real Footage Analyzed
+                Camera Feed Active · Real-Time Optical Analysis
               </span>
               <h3 className="text-base font-bold text-white tracking-tight">
                 {activeScenario.title}
@@ -282,9 +318,9 @@ export function CameraControls({ onEventCreated, onClearAll }: CameraControlsPro
             </div>
             <button
               onClick={() => setActiveScenario(null)}
-              className="text-xs font-mono text-zinc-400 hover:text-white"
+              className="text-xs font-mono text-zinc-400 hover:text-white cursor-pointer px-2 py-1 rounded-lg hover:bg-zinc-800 transition"
             >
-              Dismiss
+              Dismiss ×
             </button>
           </div>
 
@@ -320,7 +356,7 @@ export function CameraControls({ onEventCreated, onClearAll }: CameraControlsPro
               </div>
               <button
                 onClick={() => setShowRingModal(false)}
-                className="text-gray-400 hover:text-black font-bold text-xl"
+                className="text-gray-400 hover:text-black font-bold text-xl cursor-pointer"
               >
                 ×
               </button>
@@ -345,7 +381,7 @@ export function CameraControls({ onEventCreated, onClearAll }: CameraControlsPro
               <button
                 type="button"
                 onClick={() => setShowRingModal(false)}
-                className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold text-gray-500 hover:text-black transition"
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold text-gray-500 hover:text-black transition cursor-pointer"
               >
                 Close
               </button>
