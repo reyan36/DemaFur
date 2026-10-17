@@ -57,6 +57,7 @@ interface CameraControlsProps {
 export function CameraControls({ onEventCreated, onClearAll }: CameraControlsProps) {
   const router = useRouter();
   const [simulating, setSimulating] = useState(false);
+  const [purging, setPurging] = useState(false);
   const [showRingModal, setShowRingModal] = useState(false);
   const [activeScenario, setActiveScenario] = useState<typeof CAMERA_SCENARIOS[0] | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -144,7 +145,6 @@ export function CameraControls({ onEventCreated, onClearAll }: CameraControlsPro
 
       setNotice(`Camera triggered: ${scenario.title} recorded & analyzed!`);
       if (onEventCreated) onEventCreated();
-      router.refresh();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Simulation request failed");
     } finally {
@@ -155,6 +155,7 @@ export function CameraControls({ onEventCreated, onClearAll }: CameraControlsPro
   // Purge all test data (with automatic fallback to itemized deletion)
   const handlePurgeAll = async () => {
     if (!confirm("Are you sure you want to remove all existing packages and reset the database?")) return;
+    setPurging(true);
     setNotice("Purging all package data...");
     setError(null);
     try {
@@ -173,7 +174,6 @@ export function CameraControls({ onEventCreated, onClearAll }: CameraControlsPro
         setNotice("Database reset. All deliveries purged successfully.");
         setActiveScenario(null);
         if (onClearAll) onClearAll();
-        router.refresh();
         return;
       }
 
@@ -182,25 +182,24 @@ export function CameraControls({ onEventCreated, onClearAll }: CameraControlsPro
       if (listRes.ok) {
         const data = await listRes.json();
         const items = data.items || [];
-        for (const item of items) {
-          try {
-            await fetch(`${API_URL}/v1/deliveries/${item.id}`, {
+        await Promise.all(
+          items.map((item: { id: string }) =>
+            fetch(`${API_URL}/v1/deliveries/${item.id}`, {
               method: "DELETE",
               headers,
-            });
-          } catch {
-            // continue
-          }
-        }
+            }).catch(() => {})
+          )
+        );
         setNotice(`Database reset. Purged ${items.length} deliveries.`);
         setActiveScenario(null);
         if (onClearAll) onClearAll();
-        router.refresh();
       } else {
         setError("Failed to clear database. Please check backend connection.");
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Error clearing database");
+    } finally {
+      setPurging(false);
     }
   };
 
@@ -209,14 +208,14 @@ export function CameraControls({ onEventCreated, onClearAll }: CameraControlsPro
       {notice && (
         <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex justify-between items-center">
           <span>{notice}</span>
-          <button onClick={() => setNotice(null)} className="text-emerald-600 hover:text-emerald-900 font-bold">×</button>
+          <button onClick={() => setNotice(null)} className="text-emerald-600 hover:text-emerald-900 font-bold cursor-pointer">×</button>
         </div>
       )}
 
       {error && (
         <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs font-semibold flex justify-between items-center">
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="text-red-600 hover:text-red-900 font-bold">×</button>
+          <button onClick={() => setError(null)} className="text-red-600 hover:text-red-900 font-bold cursor-pointer">×</button>
         </div>
       )}
 
@@ -225,13 +224,17 @@ export function CameraControls({ onEventCreated, onClearAll }: CameraControlsPro
         {/* Primary Simulate Camera Button */}
         <button
           type="button"
-          disabled={simulating}
+          disabled={simulating || purging}
           onClick={handleSimulateCamera}
           className="px-5 py-2.5 rounded-xl text-xs font-bold bg-black text-white hover:bg-zinc-800 transition flex items-center gap-2 shadow-sm disabled:opacity-50 cursor-pointer"
         >
-          <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-          </svg>
+          {simulating ? (
+            <span className="w-4 h-4 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin" />
+          ) : (
+            <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          )}
           {simulating ? "Triggering Camera Observation..." : "Simulate a Camera"}
         </button>
 
@@ -250,11 +253,15 @@ export function CameraControls({ onEventCreated, onClearAll }: CameraControlsPro
         {/* Clear Data Button */}
         <button
           type="button"
+          disabled={purging || simulating}
           onClick={handlePurgeAll}
-          className="px-3.5 py-2.5 rounded-xl text-xs font-semibold text-gray-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition"
+          className="px-3.5 py-2.5 rounded-xl text-xs font-semibold text-gray-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
           title="Purge all test packages"
         >
-          Reset Data
+          {purging && (
+            <span className="w-3.5 h-3.5 rounded-full border-2 border-red-500 border-t-transparent animate-spin" />
+          )}
+          {purging ? "Resetting..." : "Reset Data"}
         </button>
       </div>
 

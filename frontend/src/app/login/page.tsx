@@ -10,39 +10,41 @@ export default function Login() {
   const { user, signInWithGoogle, signInWithEmail } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [emailLoading, setEmailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isBusy = googleLoading || emailLoading;
+
   useEffect(() => {
+    router.prefetch("/dashboard");
     if (user) {
       router.replace("/dashboard");
     }
   }, [user, router]);
 
   const handleGoogleSignIn = async () => {
-    setLoading(true);
+    setGoogleLoading(true);
     setError(null);
     try {
       await signInWithGoogle();
-      router.push("/dashboard");
+      router.replace("/dashboard");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Google sign in failed");
-    } finally {
-      setLoading(false);
+      setGoogleLoading(false);
     }
   };
 
   const handleEmailSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    setEmailLoading(true);
     setError(null);
     try {
       await signInWithEmail(email, password);
-      router.push("/dashboard");
+      router.replace("/dashboard");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Invalid email or password");
-    } finally {
-      setLoading(false);
+      setEmailLoading(false);
     }
   };
 
@@ -63,29 +65,38 @@ export default function Login() {
         {/* Google Sign In Button */}
         <button
           type="button"
-          disabled={loading}
+          disabled={isBusy}
           onClick={handleGoogleSignIn}
-          className="w-full flex items-center justify-center gap-3 bg-white hover:bg-gray-50 text-black font-bold py-3 px-4 rounded-xl border border-gray-200 shadow-sm transition disabled:opacity-50 text-sm"
+          className="w-full flex items-center justify-center gap-3 bg-white hover:bg-gray-50 text-black font-bold py-3 px-4 rounded-xl border border-gray-200 shadow-sm transition disabled:opacity-60 text-sm cursor-pointer"
         >
-          <svg className="w-4 h-4" viewBox="0 0 24 24">
-            <path
-              fill="#4285F4"
-              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-            />
-            <path
-              fill="#34A853"
-              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-            />
-            <path
-              fill="#FBBC05"
-              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-            />
-            <path
-              fill="#EA4335"
-              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-            />
-          </svg>
-          Continue with Google
+          {googleLoading ? (
+            <>
+              <span className="w-4 h-4 rounded-full border-2 border-black border-t-transparent animate-spin" />
+              <span>Authenticating with Google...</span>
+            </>
+          ) : (
+            <>
+              <svg className="w-4 h-4" viewBox="0 0 24 24">
+                <path
+                  fill="#4285F4"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                />
+              </svg>
+              <span>Continue with Google</span>
+            </>
+          )}
         </button>
 
         <div className="flex items-center gap-3">
@@ -100,9 +111,10 @@ export default function Login() {
             <input
               type="email"
               required
+              disabled={isBusy}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-black text-sm focus:ring-2 focus:ring-black outline-none transition"
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-black text-sm focus:ring-2 focus:ring-black outline-none transition disabled:opacity-50"
               placeholder="you@example.com"
             />
           </div>
@@ -112,19 +124,27 @@ export default function Login() {
             <input
               type="password"
               required
+              disabled={isBusy}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-black text-sm focus:ring-2 focus:ring-black outline-none transition"
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-black text-sm focus:ring-2 focus:ring-black outline-none transition disabled:opacity-50"
               placeholder="••••••••"
             />
           </div>
 
           <button
             type="submit"
-            disabled={loading}
-            className="w-full bg-black hover:bg-gray-800 text-white font-bold py-3 px-4 rounded-xl transition text-sm disabled:opacity-50 mt-2"
+            disabled={isBusy}
+            className="w-full flex items-center justify-center gap-2.5 bg-black hover:bg-gray-800 text-white font-bold py-3 px-4 rounded-xl transition text-sm disabled:opacity-60 mt-2 cursor-pointer"
           >
-            {loading ? "Signing in..." : "Sign in"}
+            {emailLoading ? (
+              <>
+                <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                <span>Signing in...</span>
+              </>
+            ) : (
+              <span>Sign in</span>
+            )}
           </button>
         </form>
 

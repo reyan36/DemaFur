@@ -233,11 +233,23 @@ def create_app(api_key=None, webhook_secret=None):
             raise HTTPException(
                 422, 'limit must be 1..100; offset must be nonnegative')
         rows = db.list_deliveries(limit=limit, offset=offset)
-        views = [snapshot(db, r['id']) for r in rows]
-        return {
-            'items': [{k: v for k, v in s.items() if k != 'timeline'}
-                      for s in views],
-            'limit': limit, 'offset': offset}
+        clock = now()
+        events_by_del: dict[str, list] = {}
+        for ev_row in db.list_all_events_ordered():
+            events_by_del.setdefault(ev_row['delivery_id'], []).append(
+                json.loads(ev_row['payload']))
+        windows_by_del: dict[str, list] = {}
+        for win_row in db.all_pickups():
+            windows_by_del.setdefault(win_row['delivery_id'], []).append(win_row)
+        items = []
+        for r in rows:
+            did = r['id']
+            assessment = assess(
+                events_by_del.get(did, []),
+                windows_by_del.get(did, []),
+                r.get('resolution'), clock)
+            items.append({**r, **assessment, 'analysis_coverage': 'not_analyzed'})
+        return {'items': items, 'limit': limit, 'offset': offset}
 
     @app.post('/v1/deliveries/purge', dependencies=auth)
     def purge_all_deliveries():

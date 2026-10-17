@@ -24,27 +24,44 @@ function authHeaders(): Record<string, string> {
   return headers;
 }
 
+/**
+ * Helper to fetch with a safe timeout that never triggers Next.js Dev Overlay Console TimeoutError.
+ */
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(id);
+  }
+}
+
 export async function getDashboardStats(): Promise<DashboardStats> {
   try {
-    const res = await fetch(`${API_BASE_URL}/v1/dashboard`, {
-      headers: authHeaders(),
-      cache: 'no-store',
-      signal: AbortSignal.timeout(4000),
-    });
+    const res = await fetchWithTimeout(
+      `${API_BASE_URL}/v1/dashboard`,
+      {
+        headers: authHeaders(),
+        cache: 'no-store',
+      },
+      15000
+    );
 
     if (!res.ok) {
-      console.error('Failed to fetch dashboard stats', await res.text());
       return fallbackDashboardStats();
     }
 
     return await res.json();
-  } catch (err) {
-    console.error('Network error fetching dashboard stats:', err);
+  } catch {
     return fallbackDashboardStats();
   }
 }
 
-function fallbackDashboardStats(): DashboardStats {
+export function fallbackDashboardStats(): DashboardStats {
   return {
     activePackages: 0,
     historicalPackages: 0,
@@ -64,31 +81,35 @@ export async function getActiveDeliveries(): Promise<Delivery[]> {
 
 export async function getAllDeliveries(limit = 50, offset = 0): Promise<Delivery[]> {
   try {
-    const res = await fetch(`${API_BASE_URL}/v1/deliveries?limit=${limit}&offset=${offset}`, {
-      headers: authHeaders(),
-      cache: 'no-store',
-      signal: AbortSignal.timeout(4000),
-    });
+    const res = await fetchWithTimeout(
+      `${API_BASE_URL}/v1/deliveries?limit=${limit}&offset=${offset}`,
+      {
+        headers: authHeaders(),
+        cache: 'no-store',
+      },
+      15000
+    );
     if (!res.ok) return [];
     const data = await res.json();
     return data.items || [];
-  } catch (err) {
-    console.error('Failed to fetch deliveries:', err);
+  } catch {
     return [];
   }
 }
 
 export async function getDelivery(id: string): Promise<Delivery | null> {
   try {
-    const res = await fetch(`${API_BASE_URL}/v1/deliveries/${id}`, {
-      headers: authHeaders(),
-      cache: 'no-store',
-      signal: AbortSignal.timeout(6000),
-    });
+    const res = await fetchWithTimeout(
+      `${API_BASE_URL}/v1/deliveries/${id}`,
+      {
+        headers: authHeaders(),
+        cache: 'no-store',
+      },
+      15000
+    );
     if (!res.ok) return null;
     return await res.json();
-  } catch (err) {
-    console.error(`Failed to fetch delivery ${id}:`, err);
+  } catch {
     return null;
   }
 }
@@ -103,10 +124,18 @@ export async function confirmDelivery(
     body: JSON.stringify({ outcome })
   });
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Confirmation failed: ${text}`);
+    const err = await res.json().catch(() => ({ detail: 'Confirmation failed' }));
+    throw new Error(err.detail || 'Confirmation failed');
   }
   return await res.json();
+}
+
+export async function deleteDelivery(id: string): Promise<boolean> {
+  const res = await fetch(`${API_BASE_URL}/v1/deliveries/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders()
+  });
+  return res.ok;
 }
 
 export async function createPickupWindow(
@@ -124,10 +153,32 @@ export async function createPickupWindow(
     })
   });
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Failed to schedule pickup window: ${text}`);
+    const err = await res.json().catch(() => ({ detail: 'Failed to create pickup window' }));
+    throw new Error(err.detail || 'Failed to create pickup window');
   }
   return await res.json();
+}
+
+export async function getPickupWindows(): Promise<PickupWindow[]> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/v1/pickup-windows`, {
+      headers: authHeaders(),
+      cache: 'no-store'
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.items || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function revokePickupWindow(windowId: string): Promise<boolean> {
+  const res = await fetch(`${API_BASE_URL}/v1/pickup-windows/${windowId}`, {
+    method: 'DELETE',
+    headers: authHeaders()
+  });
+  return res.ok;
 }
 
 export async function getEvidence(deliveryId: string): Promise<EvidenceBundle | null> {
@@ -138,29 +189,19 @@ export async function getEvidence(deliveryId: string): Promise<EvidenceBundle | 
     });
     if (!res.ok) return null;
     return await res.json();
-  } catch (err) {
-    console.error(`Failed to fetch evidence for ${deliveryId}:`, err);
+  } catch {
     return null;
   }
 }
 
-export function getEvidenceZipUrl(deliveryId: string): string {
-  return `${API_BASE_URL}/v1/deliveries/${deliveryId}/evidence.zip`;
-}
-
-export async function downloadEvidenceZip(deliveryId: string): Promise<Blob | null> {
-  try {
-    const res = await fetch(`${API_BASE_URL}/v1/deliveries/${deliveryId}/evidence.zip`, {
-      headers: {
-        'Authorization': `Bearer ${API_KEY}`
-      }
-    });
-    if (!res.ok) return null;
-    return await res.blob();
-  } catch (err) {
-    console.error(`Failed to download evidence ZIP for ${deliveryId}:`, err);
-    return null;
+export async function downloadEvidenceZip(deliveryId: string): Promise<Blob> {
+  const res = await fetch(`${API_BASE_URL}/v1/deliveries/${deliveryId}/evidence.zip`, {
+    headers: authHeaders()
+  });
+  if (!res.ok) {
+    throw new Error('Evidence bundle not available');
   }
+  return await res.blob();
 }
 
 export async function getAnalysisJobs(): Promise<AnalysisJob[]> {
@@ -172,27 +213,8 @@ export async function getAnalysisJobs(): Promise<AnalysisJob[]> {
     if (!res.ok) return [];
     const data = await res.json();
     return data.items || [];
-  } catch (err) {
-    console.error('Failed to fetch analysis jobs:', err);
+  } catch {
     return [];
-  }
-}
-
-export function getClipUrl(jobId: string): string {
-  return `${API_BASE_URL}/v1/analysis/jobs/${jobId}/clip`;
-}
-
-export async function getIntegrationStatus(): Promise<RingIntegrationStatus | null> {
-  try {
-    const res = await fetch(`${API_BASE_URL}/v1/integrations/status`, {
-      headers: authHeaders(),
-      cache: 'no-store'
-    });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch (err) {
-    console.error('Failed to fetch integration status:', err);
-    return null;
   }
 }
 
@@ -205,41 +227,45 @@ export async function getRingDevices(): Promise<RingDevice[]> {
     if (!res.ok) return [];
     const data = await res.json();
     return data.data || [];
-  } catch (err) {
-    console.error('Failed to fetch Ring devices:', err);
+  } catch {
     return [];
   }
 }
 
 export async function watchDelivery(
-  deviceId: string,
-  componentId: string,
-  deliveryId: string
-): Promise<{ delivery_id: string; camera_id: string; state: string }> {
+  deliveryId: string,
+  cameraId: string,
+  label = ''
+): Promise<boolean> {
   const res = await fetch(`${API_BASE_URL}/v1/integrations/ring/watch`, {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({
-      device_id: deviceId,
-      component_id: componentId,
-      delivery_id: deliveryId
+      delivery_id: deliveryId,
+      camera_id: cameraId,
+      label
     })
   });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Failed to start watch: ${text}`);
-  }
-  return await res.json();
+  return res.ok;
 }
 
-export async function stopWatchDelivery(deliveryId: string): Promise<{ watching: boolean }> {
+export async function stopWatchDelivery(deliveryId: string): Promise<boolean> {
   const res = await fetch(`${API_BASE_URL}/v1/integrations/ring/watch/${deliveryId}`, {
     method: 'DELETE',
     headers: authHeaders()
   });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Failed to stop watch: ${text}`);
+  return res.ok;
+}
+
+export async function getIntegrationStatus(): Promise<RingIntegrationStatus | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/v1/integrations/status`, {
+      headers: authHeaders(),
+      cache: 'no-store'
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
   }
-  return await res.json();
 }
