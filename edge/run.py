@@ -1,4 +1,4 @@
-"""DemaFur edge detector. Step 3: live boxes plus doorstep events."""
+"""DemaFur edge detector: watches a door camera, tracks people and the package, and reports doorstep events."""
 import argparse
 import json
 import os
@@ -34,6 +34,8 @@ def main():
     parser.add_argument('--delivery', default=f'edge-{uuid.uuid4().hex[:8]}', help='delivery ID for this run')
     parser.add_argument('--camera', default='front-door', help='camera ID')
     parser.add_argument('--port', type=int, default=8090, help='port for the live view')
+    parser.add_argument('--record', help='also save the annotated video to this .mp4 file')
+    parser.add_argument('--no-window', action='store_true', help='do not open the OpenCV window (live view and recording still work)')
     args = parser.parse_args()
 
     door = [int(v) for v in args.door.split(',')] if args.door else None
@@ -48,6 +50,7 @@ def main():
     print(f'Delivery {args.delivery}: ' + (f'sending events to {args.backend}' if bridge
                                            else 'DEMAFUR_WEBHOOK_SECRET not set, events are only printed'))
     next_search, last_event = 0.0, ''
+    recorder, written = None, 0
     t = 0.0
 
     for frame, t in camera.frames():
@@ -79,16 +82,33 @@ def main():
         cv2.rectangle(frame, (0, 0), (frame.shape[1], 32), (0, 0, 0), -1)
         cv2.putText(frame, f'LIVE {t:5.1f}s   {last_event}', (10, 22),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-        cv2.imshow('DemaFur edge', frame)
         live.publish(frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+        if args.record:
+            if recorder is None:   # opened on the first frame, once the picture size is known
+                height, width = frame.shape[:2]
+                recorder = cv2.VideoWriter(args.record, cv2.VideoWriter_fourcc(*'mp4v'),
+                                           camera.fps, (width, height))
+            # Frames skipped while detection was busy are filled with this frame, so the
+            # recording keeps real-time length instead of playing back too fast.
+            while written <= t * camera.fps:
+                recorder.write(frame)
+                written += 1
+        if not args.no_window:
+            cv2.imshow('DemaFur edge', frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
     for event in scene.finish(t):
         print(json.dumps(event))
         if bridge:
             bridge.send(event)
     if bridge:
         bridge.close()
+    if recorder is not None:
+        recorder.release()
+        print(f'Annotated video saved: {args.record}')
+    if not args.no_window:
+        cv2.destroyAllWindows()
+
 
 if __name__ == '__main__':
     main()
