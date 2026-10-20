@@ -9,6 +9,7 @@ import { StatCard } from "@/components/dashboard/StatCard";
 import { ActivityList } from "@/components/dashboard/ActivityList";
 import { PackageList } from "@/components/dashboard/PackageList";
 import { CameraControls } from "@/components/dashboard/CameraControls";
+import { LiveDoorCamera } from "@/components/dashboard/LiveDoorCamera";
 
 interface DashboardClientProps {
   initialStats: DashboardStats;
@@ -45,6 +46,13 @@ export function DashboardClient({ initialStats, initialDeliveries }: DashboardCl
 
   const [loginError, setLoginError] = useState<string | null>(null);
   const [guestMode, setGuestMode] = useState(false);
+
+  // Keep stats and the package list current while the live camera is producing events.
+  useEffect(() => {
+    if (!user && !guestMode) return;
+    const timer = setInterval(refreshData, 4000);
+    return () => clearInterval(timer);
+  }, [user, guestMode]);
 
   const handleGoogleLogin = async () => {
     setLoginError(null);
@@ -203,6 +211,9 @@ export function DashboardClient({ initialStats, initialDeliveries }: DashboardCl
           </a>
         </div>
       </div>
+
+      {/* Live front door camera from the edge detector (shown when NEXT_PUBLIC_EDGE_STREAM_URL is set) */}
+      <LiveDoorCamera />
 
       {/* Camera Controls & Simulation Tools */}
       <CameraControls
