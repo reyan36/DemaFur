@@ -15,6 +15,7 @@ class Source:
             raise SystemExit(f'Cannot open video source: {spec}')
         self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 25
         self.loop = loop
+        self.laps = 0               # how many times a looping file has restarted
 
     def frames(self):
         """Yield (frame, seconds since start).
@@ -29,6 +30,7 @@ class Source:
             if not ok:
                 if self.loop and not self.live:
                     self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    self.laps += 1
                     continue
                 return
             if self.live:

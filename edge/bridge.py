@@ -61,7 +61,8 @@ class Bridge:
                     risk = response.json().get('delivery', {}).get('risk', {}) if response.is_success else {}
                     print(f'  -> backend {response.status_code} {payload["kind"]}'
                           + (f'  risk={risk.get("level")} ({risk.get("score")})' if risk else f'  {response.text[:120]}'))
-                    if response.is_success and self.on_deterrents:
+                    # Ignore late replies about an earlier delivery (e.g. the previous lap of a looping video).
+                    if response.is_success and self.on_deterrents and payload['delivery_id'] == self.delivery_id:
                         actions = response.json()['delivery'].get('auto_deterrents') or []
                         if actions:
                             self.on_deterrents(actions)

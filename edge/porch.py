@@ -20,6 +20,10 @@ class Porch:
         self.warned_at = 0.0
         self.done = set()           # run each deterrent once per run
 
+    def reset(self):
+        """A new delivery started: deterrents may run again."""
+        self.done.clear()
+
     def trigger(self, actions):
         """Called with the backend's auto_deterrents list."""
         for action in actions:

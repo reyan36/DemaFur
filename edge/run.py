@@ -53,7 +53,21 @@ def main():
     recorder, written = None, 0
     t = 0.0
 
+    lap = 0
     for frame, t in camera.frames():
+        if camera.laps != lap:
+            # The looping video restarted: close this delivery and treat the next lap as a new one.
+            lap = camera.laps
+            for event in scene.finish(t):
+                print(json.dumps(event))
+                if bridge:
+                    bridge.send(event)
+            scene = Scene(linger_seconds=args.linger, door=door)
+            porch.reset()
+            last_event = ''
+            if bridge:
+                bridge.delivery_id = f'{args.delivery}-{lap}'
+                print(f'New lap: delivery {bridge.delivery_id}')
         things = detector.track(frame)
         events = []
         if scene.wants_package_search() and t >= next_search:
