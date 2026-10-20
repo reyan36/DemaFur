@@ -37,6 +37,30 @@ def assess(events, windows, resolution, clock):
     if any(e['observations']['looking_around'] for e in recent):
         score += 10
         reasons.append('Looking-around behaviour was reported; this alone is not evidence of wrongdoing.')
+    # Edge detector context: what happened to the package after it was removed?
+    if removed:
+        taken_at = datetime.fromisoformat(removed[-1]['occurred_at'])
+        carried = [e for e in reliable if e['observations'].get('carried_package')
+                   and datetime.fromisoformat(e['occurred_at']) >= taken_at]
+        if any(e['kind'] == 'person_left' and not e['observations'].get('came_from_door') for e in carried):
+            score = max(score, 80)
+            reasons.append('The person who removed the package left the camera view with it and no pickup was '
+                           'scheduled. This does not establish who they are or their intent.')
+        elif any(e['kind'] == 'entered_home' and e['observations'].get('came_from_door') for e in carried):
+            return result('collected', 0, ['The package was carried inside by someone who came out of the door; '
+                                           'likely a household member.'])
+        elif any(e['kind'] == 'entered_home' for e in carried):
+            reasons.append('The package was carried inside by someone who arrived from outside; ask the owner to confirm.')
+    # Prevention: someone from outside is handling the package and nobody is expected to collect it.
+    touches = [e for e in recent if e['kind'] == 'package_touched']
+    if touches and not removed:
+        touch = touches[-1]
+        expected = any(w['starts_at'] <= touch['occurred_at'] <= w['ends_at'] and not w['revoked']
+                       for w in windows)
+        if not expected and not touch['observations'].get('came_from_door'):
+            score = max(score, 55)
+            reasons.append('Someone who arrived from outside is handling the package and no pickup is '
+                           'scheduled; deterrents may discourage removal.')
     if delivered and not removed and clock - datetime.fromisoformat(delivered[0]['occurred_at']) > timedelta(hours=2):
         score = max(score, 25)
         reasons.append('The package has remained outside for more than two hours; consider arranging pickup.')

@@ -243,3 +243,54 @@ export async function stopWatchDelivery(deliveryId: string): Promise<{ watching:
   }
   return await res.json();
 }
+
+
+// Actions the backend queued for a delivery: owner notification and porch deterrents.
+export interface DeliveryAction {
+  id: string;
+  delivery_id: string;
+  kind: string;      // 'notify_owner' | 'turn_on_lights' | 'play_warning'
+  status: string;    // 'queued' | 'pending_approval' | 'simulated' | 'rejected' | 'cancelled'
+  reason: string;
+  created_at: string;
+}
+
+export async function getDeliveryActions(deliveryId: string): Promise<DeliveryAction[]> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/v1/actions`, {
+      headers: authHeaders(),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.items || []).filter((a: DeliveryAction) => a.delivery_id === deliveryId);
+  } catch (err) {
+    console.error('Failed to fetch actions:', err);
+    return [];
+  }
+}
+
+// AI-written summary of a delivery (Bedrock, or Groq when Bedrock is unavailable).
+export interface DeliverySummary {
+  text: string;
+  source: string;    // 'bedrock' | 'groq' | 'policy_template'
+  ai_unavailable?: boolean;
+  error?: string;
+  inference?: { provider?: string; fallback_used?: boolean };
+}
+
+export async function getDeliverySummary(deliveryId: string): Promise<DeliverySummary | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/v1/deliveries/${deliveryId}/summary`, {
+      headers: authHeaders(),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(30000),   // the AI can take several seconds
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.error('Failed to fetch summary:', err);
+    return null;
+  }
+}

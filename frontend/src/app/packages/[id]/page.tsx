@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { getDelivery, getEvidence } from "@/lib/api";
 import { VideoPlayer } from "@/components/video/VideoPlayer";
 import { DeliveryActions } from "@/components/packages/DeliveryActions";
+import { EdgeInsights } from "@/components/packages/EdgeInsights";
+import { LiveDoorCamera } from "@/components/dashboard/LiveDoorCamera";
 
 export default async function PackageDetails({
   params,
@@ -32,6 +34,7 @@ export default async function PackageDetails({
   }
 
   const evidence = delivery.status === "incident" ? await getEvidence(id) : null;
+  const isEdge = delivery.id.startsWith("edge-");
 
   const statusStyles: Record<string, string> = {
     awaiting_delivery: "bg-blue-50 text-blue-700 border-blue-200",
@@ -85,6 +88,10 @@ export default async function PackageDetails({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Left column: Video Feed & Timeline */}
         <div className="lg:col-span-7 space-y-8">
+          {isEdge ? (
+            /* Deliveries from the edge detector: show the real annotated camera feed */
+            <LiveDoorCamera />
+          ) : (
           <div>
             <h2 className="text-sm font-bold tracking-tight text-black mb-3">
               Ring Optical Monitoring & Evidence Feed
@@ -102,6 +109,7 @@ export default async function PackageDetails({
               );
             })()}
           </div>
+          )}
 
           {/* Observed Events Timeline */}
           <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
@@ -127,6 +135,9 @@ export default async function PackageDetails({
                     <div className="mt-1 flex items-center gap-3 text-[11px] font-mono text-gray-500">
                       <span>Confidence: {Math.round(evt.confidence * 100)}%</span>
                       {evt.camera_id && <span>Camera: {evt.camera_id}</span>}
+                      {evt.observations?.track_id != null && <span>Person #{String(evt.observations.track_id)}</span>}
+                      {evt.observations?.carried_package === true && <span className="text-red-600 font-bold">left with package</span>}
+                      {evt.observations?.came_from_door === true && <span>came from the door</span>}
                     </div>
                   </li>
                 ))}
@@ -167,7 +178,8 @@ export default async function PackageDetails({
               )}
             </div>
           )}
-
+          {/* What the system did automatically, and the AI's report */}
+          <EdgeInsights deliveryId={delivery.id} />
           {/* Interactive Confirmation and Pickup Actions */}
           <DeliveryActions delivery={delivery} evidence={evidence} />
         </div>

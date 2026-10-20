@@ -22,6 +22,9 @@ from .risk import assess
 from .dashboard import overview
 from .pipeline import Pipeline, routes as pipeline_routes
 
+def auto_deter():
+    """Owner setting: run lights and warnings at once instead of waiting for approval."""
+    return os.getenv('DEMAFUR_AUTO_DETER', 'true') != 'false'
 
 def create_app(api_key=None, webhook_secret=None):
     key = api_key or os.getenv('DEMAFUR_API_KEY', '')
@@ -98,13 +101,13 @@ def create_app(api_key=None, webhook_secret=None):
             if action and action['status'] == 'cancelled':
                 db.update_action(
                     action['id'],
-                    status='queued' if kind == 'notify_owner'
+                    status='queued' if kind == 'notify_owner' or auto_deter()
                     else 'pending_approval',
                     reason=' '.join(view['risk']['reasons']))
             elif not action:
                 db.create_action(
                     str(uuid.uuid4()), view['id'], kind,
-                    'queued' if kind == 'notify_owner'
+                    'queued' if kind == 'notify_owner' or auto_deter()
                     else 'pending_approval',
                     ' '.join(view['risk']['reasons']), now().isoformat())
 
@@ -183,6 +186,8 @@ def create_app(api_key=None, webhook_secret=None):
         if view.get('resolution') == 'missing':
             build_evidence(db, view)
         audit(db, event.delivery_id, 'event_ingested')
+        view['auto_deterrents'] = ([a for a in view['suggested_actions'] if a != 'notify_owner']
+                                   if auto_deter() else [])
         return {'duplicate': False, 'delivery': view}
 
     @app.post('/v1/webhooks/events', status_code=201)

@@ -20,6 +20,9 @@ class EventKind(StrEnum):
     removed = 'package_removed'
     entered = 'entered_home'
     doorbell = 'doorbell'
+    touched = 'package_touched'
+    left = 'person_left'
+    
 
 
 Identifier = Annotated[str, Field(pattern=r'^[a-zA-Z0-9_-]{1,100}$')]
@@ -28,6 +31,12 @@ Identifier = Annotated[str, Field(pattern=r'^[a-zA-Z0-9_-]{1,100}$')]
 class Observations(StrictModel):
     duration_seconds: float = Field(default=0, ge=0, le=86400)
     looking_around: bool = False
+    # Edge detector context. track_id is a per-camera tracker number that resets when
+    # the person leaves view; it is not an identity.
+    track_id: int | None = Field(default=None, ge=0, le=1_000_000)
+    carried_package: bool = False
+    came_from_door: bool = False
+    box: list[Annotated[int, Field(ge=0, le=10000)]] | None = Field(default=None, min_length=4, max_length=4)
     # No face, identity, demographic, or arbitrary instruction-bearing fields.
 
 

@@ -263,3 +263,62 @@ def test_docs_bearer_auth_and_readiness(client):
         response = client.get('/ready', headers={'Authorization': value})
         assert response.status_code == 401
         assert response.headers['www-authenticate'] == 'Bearer'
+
+def test_edge_detector_events_are_accepted(client):
+    send(client, kind='package_delivered', eid='e1')
+    send(client, kind='package_touched', eid='e2',
+         observations={'track_id': 5, 'box': [486, 223, 608, 394]})
+    delivery = send(client, kind='person_left', eid='e3',
+                    observations={'track_id': 5, 'carried_package': True, 'came_from_door': False})
+    kinds = [e['kind'] for e in delivery['timeline']]
+    assert kinds == ['package_delivered', 'package_touched', 'person_left']
+    assert delivery['timeline'][2]['observations']['carried_package'] is True
+
+
+def test_edge_detector_box_must_have_four_numbers(client):
+    bad = event(kind='package_touched', observations={'box': [1, 2, 3]})
+    assert client.post('/v1/events', json=bad).status_code == 422
+
+def test_stranger_leaving_with_package_is_high_risk_and_auto_deters(client, monkeypatch):
+    monkeypatch.setenv('DEMAFUR_AUTO_DETER', 'true')
+    send(client, kind='package_delivered', eid='e1')
+    send(client, kind='package_touched', eid='e2', observations={'track_id': 5})
+    send(client, kind='package_removed', eid='e3', observations={'track_id': 5})
+    response = client.post('/v1/events', json=event(kind='person_left', eid='e4',
+                           observations={'track_id': 5, 'carried_package': True, 'came_from_door': False}))
+    delivery = response.json()['delivery']
+    assert delivery['risk']['level'] == 'high_risk'
+    assert set(delivery['auto_deterrents']) == {'turn_on_lights', 'play_warning'}
+    statuses = {r['kind']: r['status'] for r in client.get('/v1/actions').json()['items']}
+    assert statuses['turn_on_lights'] == 'queued' and statuses['play_warning'] == 'queued'
+
+
+def test_household_member_carrying_package_inside_is_normal(client):
+    send(client, kind='package_delivered', eid='e1')
+    send(client, kind='package_removed', eid='e2', observations={'track_id': 2})
+    delivery = send(client, kind='entered_home', eid='e3',
+                    observations={'track_id': 2, 'carried_package': True, 'came_from_door': True})
+    assert delivery['risk']['level'] == 'normal'
+    assert delivery['status'] == 'collected'
+
+
+def test_prevention_outsider_touching_package_triggers_deterrents(client, monkeypatch):
+    monkeypatch.setenv('DEMAFUR_AUTO_DETER', 'true')
+    send(client, kind='package_delivered', eid='e1')
+    response = client.post('/v1/events', json=event(kind='package_touched', eid='e2',
+                           observations={'track_id': 4, 'came_from_door': False}))
+    delivery = response.json()['delivery']
+    assert delivery['risk']['level'] == 'suspicious'
+    assert set(delivery['auto_deterrents']) == {'turn_on_lights', 'play_warning'}
+
+
+def test_prevention_ignores_resident_and_scheduled_pickup(client):
+    send(client, kind='package_delivered', eid='e1')
+    assert send(client, kind='package_touched', eid='e2',
+                observations={'came_from_door': True})['risk']['level'] == 'normal'
+    send(client, kind='package_delivered', eid='f1', delivery='d2')
+    start = now() - timedelta(minutes=5)
+    window = client.post('/v1/pickup-windows', json={'delivery_id': 'd2', 'starts_at': start.isoformat(),
+                                                      'ends_at': (start + timedelta(hours=1)).isoformat()})
+    assert window.status_code == 201, window.text
+    assert send(client, kind='package_touched', eid='f2', delivery='d2')['risk']['level'] == 'normal'
