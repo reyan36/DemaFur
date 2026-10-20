@@ -77,3 +77,14 @@ def test_deployment_smoke_script(client):
     spec.loader.exec_module(module)
     module.run(client)
     assert client.get('/v1/dashboard').json()['recentActivity'] == []
+
+
+def test_high_risk_removal_counts_as_active_incident(client):
+    send(client, 'taken', seconds=20)
+    send(client, 'taken', 'package_removed', 'removed', seconds=10)
+    response = client.post('/v1/events', json={'event_id': 'taken-left', 'delivery_id': 'taken',
+        'camera_id': 'test-camera', 'kind': 'person_left', 'occurred_at': (now()-timedelta(seconds=5)).isoformat(),
+        'observations': {'carried_package': True, 'came_from_door': False}})
+    assert response.json()['delivery']['risk']['level'] == 'high_risk'
+    data = client.get('/v1/dashboard').json()
+    assert data['activeIncidents'] == 1 and data['activePackages'] == 1

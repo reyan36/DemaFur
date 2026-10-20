@@ -26,7 +26,8 @@ def overview(db, activity_limit=20, delivery_limit=20):
             historical += 1
         else:
             active.append(view)
-        incidents += view['status'] == 'incident'
+        # Active incidents: owner-reported missing, or a high-risk removal still awaiting the owner.
+        incidents += view['status'] == 'incident' or view['risk']['level'] == 'high_risk'
         pending += view['status'] == 'needs_confirmation'
 
     recent = db.list_recent_events(limit=activity_limit)
