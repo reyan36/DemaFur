@@ -23,9 +23,7 @@ export function SurveillanceView({
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [customVideoUrl, setCustomVideoUrl] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"ai_wireframe" | "video" | "edge_live">(
-    EDGE_STREAM_URL ? "edge_live" : "ai_wireframe"
-  );
+  const [viewMode, setViewMode] = useState<"ai_wireframe" | "video" | "edge_live">("ai_wireframe");
   const [timestamp, setTimestamp] = useState("");
 
   useEffect(() => {
