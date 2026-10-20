@@ -101,7 +101,7 @@ def create_app(api_key=None, webhook_secret=None):
             if action and action['status'] == 'cancelled':
                 db.update_action(
                     action['id'],
-                    'queued' if kind == 'notify_owner' or auto_deter()
+                    status='queued' if kind == 'notify_owner' or auto_deter()
                     else 'pending_approval',
                     reason=' '.join(view['risk']['reasons']))
             elif not action:

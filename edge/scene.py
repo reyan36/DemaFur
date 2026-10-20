@@ -83,7 +83,8 @@ class Scene:
         if overlaps(person['box'], self.package) and not info['touched'] and self.package_state == 'present':
             info['touched'] = True
             self.last_toucher = person['id']
-            events.append(self._event(t, 'package_touched', person))
+            from_door = self.door is not None and overlaps(info['first_box'], self.door)
+            events.append(self._event(t, 'package_touched', person, came_from_door=from_door))
         return events
 
     def _check_package(self, frame, t, covering):

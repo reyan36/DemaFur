@@ -51,10 +51,16 @@ def assess(events, windows, resolution, clock):
                                            'likely a household member.'])
         elif any(e['kind'] == 'entered_home' for e in carried):
             reasons.append('The package was carried inside by someone who arrived from outside; ask the owner to confirm.')
-    elif any(e['kind'] == 'package_touched' for e in recent):
-        score += 25
-        reasons.append('Someone touched the package without a scheduled pickup; it is still in place.')
-    
+    # Prevention: someone from outside is handling the package and nobody is expected to collect it.
+    touches = [e for e in recent if e['kind'] == 'package_touched']
+    if touches and not removed:
+        touch = touches[-1]
+        expected = any(w['starts_at'] <= touch['occurred_at'] <= w['ends_at'] and not w['revoked']
+                       for w in windows)
+        if not expected and not touch['observations'].get('came_from_door'):
+            score = max(score, 55)
+            reasons.append('Someone who arrived from outside is handling the package and no pickup is '
+                           'scheduled; deterrents may discourage removal.')
     if delivered and not removed and clock - datetime.fromisoformat(delivered[0]['occurred_at']) > timedelta(hours=2):
         score = max(score, 25)
         reasons.append('The package has remained outside for more than two hours; consider arranging pickup.')

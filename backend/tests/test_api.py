@@ -302,7 +302,23 @@ def test_household_member_carrying_package_inside_is_normal(client):
     assert delivery['status'] == 'collected'
 
 
-def test_touching_without_removal_needs_confirmation(client):
+def test_prevention_outsider_touching_package_triggers_deterrents(client, monkeypatch):
+    monkeypatch.setenv('DEMAFUR_AUTO_DETER', 'true')
     send(client, kind='package_delivered', eid='e1')
-    delivery = send(client, kind='package_touched', eid='e2', observations={'track_id': 3})
-    assert delivery['risk']['level'] == 'needs_confirmation'
+    response = client.post('/v1/events', json=event(kind='package_touched', eid='e2',
+                           observations={'track_id': 4, 'came_from_door': False}))
+    delivery = response.json()['delivery']
+    assert delivery['risk']['level'] == 'suspicious'
+    assert set(delivery['auto_deterrents']) == {'turn_on_lights', 'play_warning'}
+
+
+def test_prevention_ignores_resident_and_scheduled_pickup(client):
+    send(client, kind='package_delivered', eid='e1')
+    assert send(client, kind='package_touched', eid='e2',
+                observations={'came_from_door': True})['risk']['level'] == 'normal'
+    send(client, kind='package_delivered', eid='f1', delivery='d2')
+    start = now() - timedelta(minutes=5)
+    window = client.post('/v1/pickup-windows', json={'delivery_id': 'd2', 'starts_at': start.isoformat(),
+                                                      'ends_at': (start + timedelta(hours=1)).isoformat()})
+    assert window.status_code == 201, window.text
+    assert send(client, kind='package_touched', eid='f2', delivery='d2')['risk']['level'] == 'normal'
