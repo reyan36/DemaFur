@@ -2,6 +2,9 @@
 
 import { useEffect, useState, useRef } from "react";
 
+
+const EDGE_STREAM_URL = process.env.NEXT_PUBLIC_EDGE_STREAM_URL || null;
+
 interface SurveillanceViewProps {
   scenarioId?: string;
   title?: string;
@@ -20,7 +23,9 @@ export function SurveillanceView({
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [customVideoUrl, setCustomVideoUrl] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"ai_wireframe" | "video">("ai_wireframe");
+  const [viewMode, setViewMode] = useState<"ai_wireframe" | "video" | "edge_live">(
+    EDGE_STREAM_URL ? "edge_live" : "ai_wireframe"
+  );
   const [timestamp, setTimestamp] = useState("");
 
   useEffect(() => {
@@ -60,8 +65,16 @@ export function SurveillanceView({
         onChange={handleFileUpload}
       />
 
-      {/* 1. Real Video Feed (if user uploaded footage or provided valid custom URL) */}
-      {viewMode === "video" && activeVideo ? (
+            {viewMode === "edge_live" && EDGE_STREAM_URL ? (
+        /* 0. Live edge detector stream: real detection, boxes and events drawn by edge/run.py */
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={`${EDGE_STREAM_URL}/stream`}
+          alt="Live AI camera"
+          className="w-full h-full object-contain bg-black"
+        />
+      ) : viewMode === "video" && activeVideo ? (
+        /* 1. Real Video Feed (if user uploaded footage or provided valid custom URL) */
         <video
           ref={videoRef}
           src={activeVideo}
@@ -174,6 +187,15 @@ export function SurveillanceView({
 
       {/* Controls Overlay Bar (Toggle View & Load Real Video) */}
       <div className="absolute bottom-12 right-3 z-30 flex items-center gap-2">
+        {EDGE_STREAM_URL && viewMode !== "edge_live" && (
+          <button
+            type="button"
+            onClick={() => setViewMode("edge_live")}
+            className="px-2.5 py-1 rounded-lg bg-red-600/90 hover:bg-red-500 text-[10px] font-mono text-white border border-red-500 transition cursor-pointer shadow-md"
+          >
+            ● Live AI Camera
+          </button>
+        )}
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
@@ -225,7 +247,9 @@ export function SurveillanceView({
         <div className="text-right">
           <span className="text-[9px] font-mono text-zinc-400 block">VIEW MODE</span>
           <span className="text-[10px] font-mono font-bold text-zinc-200">
-            {viewMode === "video" && activeVideo ? "OPTICAL STREAM" : "AI PORCH MODEL"}
+              {viewMode === "edge_live" && EDGE_STREAM_URL
+              ? "EDGE AI LIVE"
+              : viewMode === "video" && activeVideo ? "OPTICAL STREAM" : "AI PORCH MODEL"}
           </span>
         </div>
       </div>
