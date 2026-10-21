@@ -3,7 +3,8 @@
 import { useState } from "react";
 
 // Live annotated stream from the edge detector (edge/run.py). Not a secret, so NEXT_PUBLIC is fine.
-const EDGE_STREAM_URL = process.env.NEXT_PUBLIC_EDGE_STREAM_URL || null;
+// Trailing slashes are dropped so "http://127.0.0.1:8090/" still reaches /stream.
+const EDGE_STREAM_URL = process.env.NEXT_PUBLIC_EDGE_STREAM_URL?.replace(/\/+$/, "") || null;
 
 /** Always-on front door view: people and packages are detected and tracked by the edge detector. */
 export function LiveDoorCamera() {

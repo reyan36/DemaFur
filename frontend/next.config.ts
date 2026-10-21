@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const API_DESTINATION =
-  process.env.NEXT_PUBLIC_API_URL || "https://demafur.onrender.com";
+  (process.env.NEXT_PUBLIC_API_URL || "https://demafur.onrender.com").replace(/\/+$/, "");
 
 const nextConfig: NextConfig = {
   async rewrites() {

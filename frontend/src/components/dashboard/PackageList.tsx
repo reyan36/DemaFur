@@ -3,13 +3,36 @@
 import { useState } from "react";
 import { Delivery } from "@/types";
 import Link from "next/link";
+import { ChevronRight, Trash2 } from "lucide-react";
+import { deleteDelivery } from "@/lib/api";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { RISK_LABELS, STATUS_LABELS, label } from "@/lib/labels";
 
 interface PackageListProps {
   deliveries: Delivery[];
+  onDeleted?: (deliveryId: string) => void;
 }
 
-export function PackageList({ deliveries }: PackageListProps) {
+export function PackageList({ deliveries, onDeleted }: PackageListProps) {
   const [filter, setFilter] = useState<"all" | "active" | "needs_confirmation" | "incident" | "collected">("all");
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteDelivery(pendingDelete);
+      onDeleted?.(pendingDelete);
+      setPendingDelete(null);
+    } catch (err: unknown) {
+      setDeleteError(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const riskStyles: Record<string, string> = {
     high_risk: "bg-red-50 text-red-600 border-red-100",
@@ -86,11 +109,11 @@ export function PackageList({ deliveries }: PackageListProps) {
                       {delivery.id.toUpperCase()}
                     </Link>
                     <span
-                      className={`text-[9px] font-mono font-bold tracking-widest uppercase px-2 py-0.5 rounded-full border ${
+                      className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
                         statusStyles[delivery.status] || "bg-gray-50 text-gray-700 border-gray-200"
                       }`}
                     >
-                      {delivery.status.replace(/_/g, " ")}
+                      {label(STATUS_LABELS, delivery.status)}
                     </span>
                   </div>
                   <p className="text-[11px] text-gray-400 font-mono">
@@ -102,11 +125,11 @@ export function PackageList({ deliveries }: PackageListProps) {
                 <div className="flex items-center gap-2">
                   {delivery.risk && (
                     <span
-                      className={`text-[10px] font-mono font-bold tracking-wider uppercase px-2.5 py-1 rounded-full border ${
+                      className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${
                         riskStyles[delivery.risk.level] || "bg-gray-50 text-gray-600 border-gray-200"
                       }`}
                     >
-                      {delivery.risk.level.replace(/_/g, " ")}
+                      {label(RISK_LABELS, delivery.risk.level)}
                     </span>
                   )}
                   <Link
@@ -114,30 +137,20 @@ export function PackageList({ deliveries }: PackageListProps) {
                     className="p-1.5 rounded-lg text-gray-400 hover:text-black hover:bg-gray-100 transition"
                     title="View details & video feed"
                   >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
+                    <ChevronRight className="w-4 h-4" />
                   </Link>
 
                   {/* Delete / Dismiss False Alarm Button */}
                   <button
-                    onClick={async (e) => {
+                    onClick={(e) => {
                       e.preventDefault();
-                      if (!confirm(`Dismiss "${delivery.id}" as false alarm and delete?`)) return;
-                      const API_URL = typeof window !== "undefined" ? "" : process.env.NEXT_PUBLIC_API_URL || "https://demafur.onrender.com";
-                      const API_KEY = process.env.NEXT_PUBLIC_DEMAFUR_API_KEY || "demafur_api_k3y_2026_s3cur3";
-                      await fetch(`${API_URL}/v1/deliveries/${delivery.id}`, {
-                        method: "DELETE",
-                        headers: { Authorization: `Bearer ${API_KEY}` },
-                      });
-                      window.location.reload();
+                      setDeleteError(null);
+                      setPendingDelete(delivery.id);
                     }}
                     className="p-1.5 rounded-lg text-gray-300 hover:text-red-600 hover:bg-red-50 transition"
                     title="Dismiss / Delete event (False Alarm)"
                   >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
               </div>
@@ -151,6 +164,18 @@ export function PackageList({ deliveries }: PackageListProps) {
           ))
         )}
       </ul>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title="Delete this delivery?"
+        message={`${pendingDelete?.toUpperCase()} and its events, actions and evidence will be removed. Use this for false alarms.`}
+        confirmLabel="Delete"
+        danger
+        busy={deleting}
+        error={deleteError}
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }

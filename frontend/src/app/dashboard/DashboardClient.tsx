@@ -1,57 +1,60 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
+import { CircleHelp, Lock, Package, PackageCheck, ShieldAlert } from "lucide-react";
 import { DashboardStats, Delivery } from "@/types";
-import { getDashboardStats, getAllDeliveries } from "@/lib/api";
+import { getDashboardStats, getAllDeliveries, fallbackDashboardStats } from "@/lib/api";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { ActivityList } from "@/components/dashboard/ActivityList";
 import { PackageList } from "@/components/dashboard/PackageList";
 import { CameraControls } from "@/components/dashboard/CameraControls";
 import { LiveDoorCamera } from "@/components/dashboard/LiveDoorCamera";
 
-interface DashboardClientProps {
-  initialStats: DashboardStats;
-  initialDeliveries: Delivery[];
-}
-
-export function DashboardClient({ initialStats, initialDeliveries }: DashboardClientProps) {
+export function DashboardClient() {
   const { user, loading: authLoading, signInWithGoogle } = useAuth();
-  const [stats, setStats] = useState<DashboardStats>(initialStats);
-  const [deliveries, setDeliveries] = useState<Delivery[]>(initialDeliveries);
-  const [refreshing, setRefreshing] = useState(false);
+  const [stats, setStats] = useState<DashboardStats>(fallbackDashboardStats);
+  const [deliveries, setDeliveries] = useState<Delivery[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const lastSummary = useRef<string | null>(null);
 
-  const refreshData = async () => {
-    setRefreshing(true);
+  // The summary changes whenever any delivery does, so the full list is only fetched again
+  // when it changed (or when forced after the user's own change).
+  const refreshData = async (force = true) => {
     try {
-      const [newStats, newDeliveries] = await Promise.all([
-        getDashboardStats(),
-        getAllDeliveries(50, 0),
-      ]);
+      const newStats = await getDashboardStats();
       setStats(newStats);
-      setDeliveries(newDeliveries.length > 0 ? newDeliveries : newStats.activeDeliveries || []);
+      const summary = JSON.stringify([
+        newStats.activePackages, newStats.historicalPackages, newStats.activeIncidents,
+        newStats.pendingConfirmations, newStats.recentActivity.map((e) => e.event_id)]);
+      if (force || summary !== lastSummary.current) {
+        lastSummary.current = summary;
+        const list = await getAllDeliveries(50, 0);
+        setDeliveries(list.length > 0 ? list : newStats.activeDeliveries || []);
+      }
     } catch (err) {
       console.error("Refresh error:", err);
     } finally {
-      setRefreshing(false);
+      setLoaded(true);
     }
   };
-
-  useEffect(() => {
-    if (user) {
-      refreshData();
-    }
-  }, [user]);
 
   const [loginError, setLoginError] = useState<string | null>(null);
   const [guestMode, setGuestMode] = useState(false);
 
-  // Keep stats and the package list current while the live camera is producing events.
+  // Load once signed in, then keep stats and the package list current while the camera is
+  // producing events. Skipped while the tab is hidden: every poll is a Firestore read.
   useEffect(() => {
     if (!user && !guestMode) return;
-    const timer = setInterval(refreshData, 4000);
-    return () => clearInterval(timer);
+    const first = setTimeout(() => void refreshData(), 0);
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") void refreshData(false);
+    }, 4000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(timer);
+    };
   }, [user, guestMode]);
 
   const handleGoogleLogin = async () => {
@@ -69,7 +72,7 @@ export function DashboardClient({ initialStats, initialDeliveries }: DashboardCl
     return (
       <div className="min-h-[70vh] flex flex-col items-center justify-center gap-3">
         <div className="w-8 h-8 rounded-full border-2 border-black border-t-transparent animate-spin" />
-        <span className="text-xs font-mono text-gray-400">Verifying security session...</span>
+        <span className="text-xs font-mono text-gray-400">Checking your sign-in…</span>
       </div>
     );
   }
@@ -80,23 +83,21 @@ export function DashboardClient({ initialStats, initialDeliveries }: DashboardCl
       <div className="min-h-[80vh] flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-white border border-gray-100 rounded-3xl p-8 sm:p-10 shadow-sm text-center space-y-6">
           <div className="w-16 h-16 rounded-2xl bg-black text-white flex items-center justify-center mx-auto shadow-md">
-            <svg className="w-8 h-8 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-            </svg>
+            <Lock className="w-7 h-7" strokeWidth={1.75} />
           </div>
 
           <div className="space-y-2">
             <h2 className="text-2xl font-black tracking-tight text-black">
-              Restricted Security Access
+              Sign in to your dashboard
             </h2>
             <p className="text-xs text-gray-500 leading-relaxed">
-              Your DemaFur household security dashboard and live Ring camera feeds are protected. Please authenticate to continue.
+              Your deliveries and camera events are private to your household.
             </p>
           </div>
 
           {loginError && (
             <div className="p-3 text-xs rounded-xl bg-red-50 border border-red-200 text-red-700 text-left font-mono">
-              <span className="font-bold block mb-0.5">Authentication Note:</span>
+              <span className="font-bold block mb-0.5">Sign-in failed</span>
               {loginError}
             </div>
           )}
@@ -134,7 +135,7 @@ export function DashboardClient({ initialStats, initialDeliveries }: DashboardCl
               onClick={() => setGuestMode(true)}
               className="text-gray-400 hover:text-black font-mono transition underline"
             >
-              Continue as Guest (Dev Bypass)
+              Try the demo without an account
             </button>
           </div>
         </div>
@@ -142,106 +143,60 @@ export function DashboardClient({ initialStats, initialDeliveries }: DashboardCl
     );
   }
 
-  const monitoringStatus = stats.monitoringStatus || "offline";
+  const ringSandbox = Boolean(stats.integrations?.ring_sandbox);
+  const ringConnected = ringSandbox || Boolean(
+    stats.integrations?.ring_configured && !stats.integrations?.ring_disabled);
 
   return (
-    <div className="space-y-10 max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
-      {/* Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-gray-100 pb-8">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-600 font-bold bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-              Authenticated · {user?.displayName || user?.email || "Guest Mode (Dev)"}
-            </span>
-          </div>
-          <h1 className="text-4xl font-black tracking-tight text-black">
-            Security Dashboard
-          </h1>
-          <p className="mt-1 text-sm text-gray-500 font-medium">
-            AI-supervised doorstep monitoring and parcel theft defense.
-          </p>
-        </div>
-
-        {/* Live System Status Widget */}
-        <div className="flex items-center gap-4 bg-gray-50 border border-gray-100 rounded-2xl p-4 self-start md:self-auto">
-          <div className="flex items-center gap-2.5">
-            <span
-              className={`w-3 h-3 rounded-full ${
-                monitoringStatus === "healthy"
-                  ? "bg-emerald-500"
-                  : monitoringStatus === "warning"
-                  ? "bg-amber-500"
-                  : "bg-red-500"
-              } animate-pulse`}
-            />
-            <div>
-              <span className="text-[10px] font-mono uppercase tracking-wider text-gray-400 block">
-                Ring Hub Status
-              </span>
-              <span className="text-xs font-mono font-bold uppercase text-black">
-                {monitoringStatus === "warning"
-                  ? "Staging / Active"
-                  : monitoringStatus.toUpperCase()}
-              </span>
-            </div>
-          </div>
-
-          <div className="h-8 w-px bg-gray-200" />
-
-          <div>
-            <span className="text-[10px] font-mono uppercase tracking-wider text-gray-400 block">
-              Optical AI
-            </span>
-            <span className="text-xs font-mono font-bold uppercase text-black">
-              {stats.integrations?.vision_configured ? "AWS Bedrock Active" : "Vision Sampling Ready"}
-            </span>
-          </div>
-
-          <div className="h-8 w-px bg-gray-200 hidden sm:block" />
-
-          <a
-            href="https://stats.uptimerobot.com/5q6oQH46Zd"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-gray-100 border border-gray-200 transition text-[11px] font-mono font-bold text-gray-700 hover:text-black shadow-xs"
-            title="View public UptimeRobot status page"
-          >
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Live Uptime ↗</span>
-          </a>
-        </div>
+    <div className="space-y-8 max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+      <div>
+        <h1 className="text-3xl font-black tracking-tight text-black">Dashboard</h1>
+        <p className="mt-1 text-sm text-gray-500">Parcels at your door, what the camera saw, and what needs your attention.</p>
       </div>
 
       {/* Live front door camera from the edge detector (shown when NEXT_PUBLIC_EDGE_STREAM_URL is set) */}
       <LiveDoorCamera />
 
-      {/* Camera Controls & Simulation Tools */}
       <CameraControls
-        onEventCreated={refreshData}
+        ringConnected={ringConnected}
+        ringSandbox={ringSandbox}
+        onEventCreated={() => refreshData(false)}
         onClearAll={refreshData}
       />
 
       {/* Top Stats Row */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Active Packages" value={stats.activePackages} />
+        <StatCard title="Active packages" icon={Package} value={loaded ? stats.activePackages : "…"} />
         <StatCard
-          title="Needs Confirmation"
-          value={stats.pendingConfirmations}
+          title="Needs review"
+          icon={CircleHelp}
+          value={loaded ? stats.pendingConfirmations : "…"}
           status={stats.pendingConfirmations > 0 ? "warning" : "default"}
         />
         <StatCard
-          title="Active Incidents"
-          value={stats.activeIncidents}
+          title="Active incidents"
+          icon={ShieldAlert}
+          value={loaded ? stats.activeIncidents : "…"}
           status={stats.activeIncidents > 0 ? "danger" : "success"}
         />
-        <StatCard title="Historical Packages" value={stats.historicalPackages} />
+        <StatCard title="Resolved" icon={PackageCheck} value={loaded ? stats.historicalPackages : "…"} />
       </div>
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 items-start">
         {/* Left Column: Deliveries (7 cols) */}
         <div className="lg:col-span-7 space-y-6">
-          <PackageList deliveries={deliveries} />
+          {loaded ? (
+            <PackageList
+              deliveries={deliveries}
+              onDeleted={(id) => {
+                setDeliveries((list) => list.filter((d) => d.id !== id));   // show it gone at once
+                refreshData();
+              }}
+            />
+          ) : (
+            <p className="text-xs font-mono text-gray-400">Loading your packages…</p>
+          )}
         </div>
 
         {/* Right Column: Activity Feed (5 cols) */}

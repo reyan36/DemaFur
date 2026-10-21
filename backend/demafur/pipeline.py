@@ -33,6 +33,33 @@ class WatchIn(StrictModel):
     delivery_id: Identifier
 
 
+# Ring sandbox (RING_SANDBOX=true): one synthetic doorbell, and Ring Partner API v1.1 events
+# signed with the app's real HMAC key and sent through the normal webhook handler. For demos
+# without a physical camera; the Ring Developer Playground does not deliver webhooks.
+SANDBOX_DEVICE = 'sandbox.front-door'
+
+
+def sandbox():
+    return os.getenv('RING_SANDBOX') == 'true'
+
+
+def sign_ring_event(kind, device, account, secret, event_id=None):
+    """Build a v1.1 webhook body as Ring sends it, and its X-Signature header value."""
+    sent = datetime.now(timezone.utc)
+    body = json.dumps({
+        'meta': {'version': '1.1', 'account_id': account,
+                 'time': sent.isoformat().replace('+00:00', 'Z')},
+        'data': {'id': event_id or uuid.uuid4().hex, 'type': kind,
+                 'attributes': {'source': device, 'component_ids': [],
+                                'timestamp': int(sent.timestamp() * 1000)}}}).encode()
+    return body, 'sha256=' + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+
+
+class SandboxEventIn(StrictModel):
+    delivery_id: Identifier
+    kind: Annotated[str, Field(pattern=r'^(motion_detected|button_press)$')]
+
+
 class Pipeline:
     def __init__(self, db, apply_result):
         self.db, self.apply_result = db, apply_result
@@ -65,7 +92,8 @@ class Pipeline:
             'ffmpeg_available': bool(
                 shutil.which(os.getenv('FFMPEG_PATH') or 'ffmpeg')),
             'jobs': counts, 'hardware_actions': 'simulated',
-            'onboarding': 'ring_driven_nonce_linking'}
+            'onboarding': 'ring_driven_nonce_linking',
+            'ring_sandbox': sandbox()}
 
     def accept(self, raw, signature):
         secret = os.getenv('RING_HMAC_SIGNING_KEY')
@@ -179,7 +207,9 @@ class Pipeline:
                 occurred_at=occurred.isoformat(),
                 event_kind=('motion' if kind == 'motion_detected'
                             else 'doorbell'),
-                fingerprint=fingerprint, state='queued',
+                fingerprint=fingerprint,
+                # A sandbox device has no recording to download, so nothing is queued.
+                state='sandbox_no_recording' if sandbox() else 'queued',
                 attempts=0,
                 available_at=max(
                     time.time(), occurred.timestamp() + 65),
@@ -211,8 +241,8 @@ class Pipeline:
     def clip(self, job):
         return self.media_root / (job['id'] + '.mp4')
 
-    def remove_delivery(self, db, delivery_id):
-        jobs = db.list_ring_jobs(delivery_id=delivery_id)
+    def remove_clips(self, jobs):
+        """Delete downloaded clips for Ring jobs returned by db.delete_deliveries."""
         for row in jobs:
             self.clip(row).unlink(missing_ok=True)
 
@@ -375,6 +405,9 @@ def routes(pipeline, owner):
 
     @router.get('/v1/integrations/ring/devices', dependencies=auth)
     def devices():
+        if sandbox():
+            return {'data': [{'id': SANDBOX_DEVICE, 'type': 'doorbell',
+                              'name': 'Front door (Ring sandbox)'}]}
         if pipeline.disabled(pipeline.db):
             raise HTTPException(
                 409,
@@ -433,6 +466,22 @@ def routes(pipeline, owner):
         db.delete_ring_routes(delivery_id=delivery_id)
         db.cancel_active_jobs(delivery_id=delivery_id)
         return {'watching': False}
+
+    @router.post('/v1/integrations/ring/sandbox/events',
+                 dependencies=auth, status_code=201)
+    def sandbox_event(data: SandboxEventIn):
+        """Send a signed sandbox Ring event about a delivery through the webhook handler."""
+        secret, account = os.getenv('RING_HMAC_SIGNING_KEY'), pipeline.ring.account_id()
+        if not sandbox() or not secret or not account:
+            raise HTTPException(
+                409, 'Set RING_SANDBOX=true, RING_HMAC_SIGNING_KEY and RING_ACCOUNT_ID')
+        db = pipeline.db
+        if not db.get_delivery(data.delivery_id):
+            raise HTTPException(404, 'Delivery not found')
+        # The sandbox doorbell watches whichever delivery the event is about.
+        db.set_ring_route(SANDBOX_DEVICE, '', data.delivery_id)
+        body, signature = sign_ring_event(data.kind, SANDBOX_DEVICE, account, secret)
+        return pipeline.accept(body, signature)
 
     @router.post('/v1/webhooks/ring')
     async def webhook(request: Request,

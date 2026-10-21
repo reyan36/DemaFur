@@ -88,3 +88,31 @@ def test_high_risk_removal_counts_as_active_incident(client):
     assert response.json()['delivery']['risk']['level'] == 'high_risk'
     data = client.get('/v1/dashboard').json()
     assert data['activeIncidents'] == 1 and data['activePackages'] == 1
+
+
+def test_dashboard_is_cached_until_something_is_written(monkeypatch):
+    import demafur.app as module
+    monkeypatch.setenv('DEMAFUR_READ_CACHE_SECONDS', '60')
+    calls = []
+    real = module.overview
+    monkeypatch.setattr(module, 'overview', lambda *args: calls.append(1) or real(*args))
+    with TestClient(create_app(KEY, 'dashboard-test-webhook-key-123456789'),
+                    headers={'Authorization': f'Bearer {KEY}'}) as client:
+        assert client.get('/v1/dashboard').json()['activePackages'] == 0
+        client.get('/v1/dashboard')
+        assert len(calls) == 1          # polling again without new data reads nothing
+        send(client, 'new', seconds=5)
+        assert client.get('/v1/dashboard').json()['activePackages'] == 1
+        assert len(calls) == 2
+
+
+def test_purge_in_chunks_reports_progress_and_removes_related_records(client):
+    for name in ('a', 'b', 'c'):
+        send(client, name, seconds=10)
+    first = client.post('/v1/deliveries/purge?limit=2').json()
+    assert (first['purged'], first['remaining']) == (2, 1)
+    second = client.post('/v1/deliveries/purge?limit=2').json()
+    assert (second['purged'], second['remaining']) == (1, 0)
+    data = client.get('/v1/dashboard').json()
+    assert data['activePackages'] == 0 and data['recentActivity'] == []   # events went too
+    assert client.get('/v1/deliveries/a').status_code == 404

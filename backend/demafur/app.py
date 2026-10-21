@@ -19,7 +19,7 @@ from .ai import summarize
 from .db import Database, timeline
 from .models import EventIn, PickupIn, Confirmation, ActionDecision, Question, now
 from .risk import assess
-from .dashboard import overview
+from .dashboard import overview, deliveries_page, coverage
 from .pipeline import Pipeline, routes as pipeline_routes
 
 def auto_deter():
@@ -67,37 +67,51 @@ def create_app(api_key=None, webhook_secret=None):
             raise HTTPException(404, 'Delivery not found')
         return row
 
-    def snapshot(db, delivery_id):
-        delivery = get_delivery(db, delivery_id)
-        events = timeline(db, delivery_id)
-        windows = db.list_pickups(delivery_id=delivery_id)
+    def build_view(delivery, events, windows, states):
         assessment = assess(events, windows, delivery.get('resolution'), now())
-        states = db.job_states_for_delivery(delivery_id)
-        coverage = ('unavailable' if 'failed' in states
-                     else 'pending' if any(
-                         s in ('queued', 'retry', 'processing') for s in states)
-                     else 'sampled_frames' if 'completed' in states
-                     else 'not_analyzed')
-        if coverage in ('unavailable', 'pending'):
-            assessment['risk']['reasons'].append(
-                'Footage analysis is ' + coverage
-                + '; the current score is not an all-clear assessment.')
-        return {**delivery, **assessment,
-                'timeline': events, 'analysis_coverage': coverage}
+        return {**delivery, **assessment, 'timeline': events,
+                'analysis_coverage': coverage(assessment, states)}
+
+    def snapshot(db, delivery_id):
+        delivery, events, windows, states = db.read_many(
+            lambda: db.get_delivery(delivery_id),
+            lambda: timeline(db, delivery_id),
+            lambda: db.list_pickups(delivery_id=delivery_id),
+            lambda: db.job_states_for_delivery(delivery_id))
+        if not delivery:
+            raise HTTPException(404, 'Delivery not found')
+        return build_view(delivery, events, windows, states)
 
     def audit(db, delivery_id, operation):
         db.add_audit(delivery_id, operation, now().isoformat())
 
-    def sync_actions(db, view):
+    # Firestore bills every document read and the dashboard polls every few seconds, so list
+    # views are rebuilt only after a write, or once they are old enough for time-based rules.
+    cache_seconds = float(os.getenv('DEMAFUR_READ_CACHE_SECONDS', '30'))
+    cache = {}
+    summaries = {}
+
+    def cached(key, build):
+        hit = cache.get(key)
+        if hit and hit[0] == db.version and time.monotonic() - hit[1] < cache_seconds:
+            return hit[2]
+        version = db.version   # read first: a write during build makes the next call rebuild
+        value = build()
+        cache[key] = (version, time.monotonic(), value)
+        return value
+
+    def sync_actions(db, view, existing=None):
         desired = view['suggested_actions']
-        existing = db.list_actions(delivery_id=view['id'])
+        if existing is None:
+            existing = db.list_actions(delivery_id=view['id'])
         for row in existing:
             if (row['kind'] not in desired
                     and row['status'] in ('pending_approval', 'queued')):
                 db.update_action(row['id'], status='cancelled')
+        by_kind = {row['kind']: row for row in existing}
         for kind in desired:
             # Try to reactivate a cancelled action
-            action = db.find_action(view['id'], kind)
+            action = by_kind.get(kind)
             if action and action['status'] == 'cancelled':
                 db.update_action(
                     action['id'],
@@ -163,29 +177,37 @@ def create_app(api_key=None, webhook_secret=None):
         payload = event.model_dump(mode='json')
         payload['occurred_at'] = event.occurred_at.isoformat()
         canonical = json.dumps(payload, sort_keys=True)
-        existing = db.get_event(event.event_id)
+        # Everything this event needs is read at once and written in one batch: done one
+        # after another, the Firestore round trips made each event take several seconds.
+        existing, delivery, events, windows, states, actions = db.read_many(
+            lambda: db.get_event(event.event_id),
+            lambda: db.get_delivery(event.delivery_id),
+            lambda: timeline(db, event.delivery_id),
+            lambda: db.list_pickups(delivery_id=event.delivery_id),
+            lambda: db.job_states_for_delivery(event.delivery_id),
+            lambda: db.list_actions(delivery_id=event.delivery_id))
         if existing:
             if json.loads(existing['payload']) != payload:
                 raise HTTPException(
                     409, 'Event ID already exists with different data')
             response.status_code = 200
             return {'duplicate': True,
-                    'delivery': snapshot(db, event.delivery_id)}
-        delivery = db.get_delivery(event.delivery_id)
+                    'delivery': build_view(delivery, events, windows, states)}
         if delivery and delivery['camera_id'] != event.camera_id:
             raise HTTPException(409, 'Delivery belongs to another camera')
-        if db.count_events(event.delivery_id) >= 2000:
+        if len(events) >= 2000:
             raise HTTPException(409, 'Delivery event limit reached')
-        db.create_delivery(
-            event.delivery_id, event.camera_id, now().isoformat())
-        db.create_event(
-            event.event_id, event.delivery_id,
-            payload['occurred_at'], canonical)
-        view = snapshot(db, event.delivery_id)
-        sync_actions(db, view)
+        created_at = now().isoformat()
+        db.record_event(event.event_id, event.delivery_id, event.camera_id,
+                        payload['occurred_at'], canonical, created_at,
+                        new_delivery=delivery is None)
+        delivery = delivery or {'id': event.delivery_id, 'camera_id': event.camera_id,
+                                'created_at': created_at, 'resolution': None, 'resolved_at': None}
+        events = sorted(events + [json.loads(canonical)], key=lambda e: e['occurred_at'])
+        view = build_view(delivery, events, windows, states)
+        sync_actions(db, view, actions)
         if view.get('resolution') == 'missing':
             build_evidence(db, view)
-        audit(db, event.delivery_id, 'event_ingested')
         view['auto_deterrents'] = ([a for a in view['suggested_actions'] if a != 'notify_owner']
                                    if auto_deter() else [])
         return {'duplicate': False, 'delivery': view}
@@ -221,38 +243,40 @@ def create_app(api_key=None, webhook_secret=None):
                   delivery_limit: int = 20):
         if not 1 <= activity_limit <= 100 or not 1 <= delivery_limit <= 100:
             raise HTTPException(422, 'limits must be 1..100')
-        result = overview(db, activity_limit, delivery_limit)
-        integration = pipeline.status()
-        result['monitoringStatus'] = (
-            'offline' if not integration['ring_configured']
-            or integration['ring_disabled'] else 'warning')
-        result['monitoringReason'] = (
-            'Camera and worker liveness have not been verified.')
-        result['integrations'] = integration
+
+        def build():
+            result = overview(db, activity_limit, delivery_limit)
+            integration = pipeline.status()
+            result['monitoringStatus'] = (
+                'offline' if not integration['ring_configured']
+                or integration['ring_disabled'] else 'warning')
+            result['monitoringReason'] = (
+                'Camera and worker liveness have not been verified.')
+            result['integrations'] = integration
+            return result
         response.headers['Cache-Control'] = 'no-store'
-        return result
+        return cached(('dashboard', activity_limit, delivery_limit), build)
 
     @app.get('/v1/deliveries', dependencies=auth)
     def deliveries(limit: int = 50, offset: int = 0):
         if not 1 <= limit <= 100 or offset < 0:
             raise HTTPException(
                 422, 'limit must be 1..100; offset must be nonnegative')
-        rows = db.list_deliveries(limit=limit, offset=offset)
-        views = [snapshot(db, r['id']) for r in rows]
-        return {
-            'items': [{k: v for k, v in s.items() if k != 'timeline'}
-                      for s in views],
-            'limit': limit, 'offset': offset}
+
+        return cached(('deliveries', limit, offset), lambda: {
+            'items': deliveries_page(db, limit, offset),
+            'limit': limit, 'offset': offset})
 
     @app.post('/v1/deliveries/purge', dependencies=auth)
-    def purge_all_deliveries():
-        all_dels = db.list_deliveries(limit=500)
-        deleted = []
-        for d in all_dels:
-            pipeline.remove_delivery(db, d['id'])
-            db.delete_delivery(d['id'])
-            deleted.append(d['id'])
-        return {'purged': len(deleted), 'deliveries': deleted}
+    def purge_all_deliveries(limit: int = 500):
+        """Delete up to `limit` deliveries. Call again while `remaining` > 0 to report progress."""
+        if not 1 <= limit <= 500:
+            raise HTTPException(422, 'limit must be 1..500')
+        ids = [d['id'] for d in db.list_deliveries()]
+        deleted = ids[:limit]
+        pipeline.remove_clips(db.delete_deliveries(deleted))
+        return {'purged': len(deleted), 'remaining': len(ids) - len(deleted),
+                'deliveries': deleted}
 
     @app.get('/v1/deliveries/{delivery_id}', dependencies=auth)
     def detail(delivery_id: str):
@@ -261,7 +285,17 @@ def create_app(api_key=None, webhook_secret=None):
     @app.get('/v1/deliveries/{delivery_id}/summary', dependencies=auth)
     def summary(delivery_id: str):
         view = snapshot(db, delivery_id)
-        return summarize(view)
+        # Reuse the AI report until the delivery changes: each one is a paid provider call.
+        key = json.dumps([delivery_id, view.get('resolution'), view['risk'],
+                          [e['event_id'] for e in view['timeline']]], sort_keys=True)
+        if key not in summaries:
+            result = summarize(view)
+            if result.get('ai_unavailable'):
+                return result                 # try the provider again next time
+            if len(summaries) > 500:
+                summaries.clear()
+            summaries[key] = result
+        return summaries[key]
 
     @app.post('/v1/pickup-windows', dependencies=auth, status_code=201)
     def pickup(data: PickupIn):
@@ -321,8 +355,8 @@ def create_app(api_key=None, webhook_secret=None):
         return view
 
     @app.get('/v1/actions', dependencies=auth)
-    def actions():
-        return {'items': db.list_actions(limit=200)}
+    def actions(delivery_id: str | None = None):
+        return {'items': db.list_actions(delivery_id=delivery_id, limit=200)}
 
     @app.post('/v1/actions/{action_id}/decision', dependencies=auth)
     def decide(action_id: str, data: ActionDecision):
@@ -361,20 +395,20 @@ def create_app(api_key=None, webhook_secret=None):
         retention = max(1, int(os.getenv('DEMAFUR_RETENTION_DAYS', '30')))
         cutoff = (now() - timedelta(days=retention)).isoformat()
         all_dels = db.list_deliveries()
-        expired_count = 0
+        expired = []
         for d in all_dels:
             if d['created_at'] < cutoff:
                 # Check if delivery has recent events
                 events = db.list_events_for_delivery(d['id'])
-                has_recent = any(
-                    e.get('occurred_at', '') >= cutoff for e in events)
-                if not has_recent:
-                    pipeline.remove_delivery(db, d['id'])
-                    db.delete_delivery(d['id'])
-                    expired_count += 1
-        # Refresh risk for remaining deliveries
-        for d in db.list_deliveries():
-            sync_actions(db, snapshot(db, d['id']))
+                if not any(e.get('occurred_at', '') >= cutoff for e in events):
+                    expired.append(d['id'])
+        pipeline.remove_clips(db.delete_deliveries(expired))
+        expired_count = len(expired)
+        # Refresh risk for open deliveries only: an owner-resolved delivery's risk cannot change,
+        # and the worker runs this every minute.
+        for d in all_dels:
+            if d['id'] not in expired and not d.get('resolution'):
+                sync_actions(db, snapshot(db, d['id']))
         return {'deleted_deliveries': expired_count,
                 'retention_days': retention, 'risk_refreshed': True}
 
@@ -434,8 +468,7 @@ def create_app(api_key=None, webhook_secret=None):
     @app.delete('/v1/deliveries/{delivery_id}', dependencies=auth)
     def delete(delivery_id: str):
         get_delivery(db, delivery_id)
-        pipeline.remove_delivery(db, delivery_id)
-        db.delete_delivery(delivery_id)
+        pipeline.remove_clips(db.delete_deliveries([delivery_id]))
         return {'deleted': True, 'external_media_deleted': False}
 
     @app.post('/v1/assistant/query', dependencies=auth)

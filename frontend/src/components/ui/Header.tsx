@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
+import { Logo } from "@/components/ui/Logo";
 
 export function Header() {
   const { user, logout } = useAuth();
@@ -11,31 +12,20 @@ export function Header() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 items-center">
           <div className="flex-shrink-0 flex items-center">
-            <Link href="/" className="text-xl font-black tracking-tighter text-black">
-              DemaFur.
+            <Link href="/" aria-label="DemaFur home">
+              <Logo />
             </Link>
           </div>
 
-          <div className="flex items-center space-x-6">
+          <div className="flex items-center gap-3 sm:gap-6 whitespace-nowrap">
             <Link
               href="/dashboard"
-              className="text-sm font-medium text-gray-500 hover:text-black transition-colors"
+              className="hidden sm:inline text-sm font-medium text-gray-500 hover:text-black transition-colors"
             >
               Dashboard
             </Link>
 
-            <a
-              href="https://stats.uptimerobot.com/5q6oQH46Zd"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden sm:flex items-center gap-1.5 text-xs font-mono text-gray-500 hover:text-black px-2.5 py-1 rounded-full bg-gray-50 hover:bg-gray-100 border border-gray-100 transition"
-              title="Live UptimeRobot Status"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Status</span>
-            </a>
-
-            <div className="flex items-center space-x-3 border-l border-gray-100 pl-6">
+            <div className="flex items-center gap-1 sm:gap-3 sm:border-l sm:border-gray-100 sm:pl-6">
               {user ? (
                 <div className="flex items-center gap-3">
                   <span className="text-xs font-mono text-gray-500 hidden sm:inline-block max-w-[150px] truncate">

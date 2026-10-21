@@ -18,6 +18,7 @@ export interface Event {
 
 export interface RiskAssessment {
   level: 'normal' | 'needs_confirmation' | 'suspicious' | 'high_risk';
+  score: number;   // heuristic 0-100, not a probability
   reasons: string[];
 }
 
@@ -61,6 +62,8 @@ export interface EvidenceBundle {
   included_recordings?: EvidenceRecording[];
   recordings_not_included?: number;
   clip_extraction?: string;
+  // Footage the events point to (not downloaded or verified by the backend).
+  media?: { event_id: string; media_ref: string; status: string }[];
 }
 
 export interface AnalysisJob {
@@ -106,6 +109,7 @@ export interface RingIntegrationStatus {
   jobs: Record<string, number>;
   hardware_actions: string;
   onboarding: string;
+  ring_sandbox?: boolean;   // synthetic Ring doorbell with signed webhooks, for demos
 }
 
 export interface DashboardStats {

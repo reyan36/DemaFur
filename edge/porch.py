@@ -1,8 +1,8 @@
 """Simulated porch hardware: a spoken warning and porch lights.
 
 There is no real Ring speaker or floodlight here, so the warning is spoken through the
-computer's speaker (macOS `say`) and the lights are drawn on the video. In a real install,
-this is where a Ring Floodlight or Chime would be triggered.
+computer's speaker (macOS `say`, Windows speech, or Linux `spd-say`/`espeak`) and the lights
+are drawn on the video. In a real install, this is where a Ring Floodlight or Chime would be triggered.
 """
 import shutil
 import subprocess
@@ -12,6 +12,21 @@ import cv2
 
 WARNING = 'Attention. This entrance is being recorded.'
 LIGHTS_SECONDS = 15
+
+
+def speak(text):
+    """Say the text through the computer's speaker without pausing the video."""
+    if shutil.which('say'):                                   # macOS
+        command = ['say', text]
+    elif shutil.which('powershell'):                          # Windows
+        command = ['powershell', '-NoProfile', '-Command',
+                   'Add-Type -AssemblyName System.Speech; '
+                   f'(New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak("{text}")']
+    elif shutil.which('spd-say') or shutil.which('espeak'):   # Linux
+        command = [shutil.which('spd-say') or shutil.which('espeak'), text]
+    else:
+        return
+    subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)   # Popen: do not wait
 
 
 class Porch:
@@ -36,8 +51,7 @@ class Porch:
             elif action == 'play_warning':
                 self.warned_at = time.monotonic()
                 print(f'  !! warning: "{WARNING}"')
-                if shutil.which('say'):
-                    subprocess.Popen(['say', WARNING])   # Popen: speak without pausing the video
+                speak(WARNING)
 
     def draw(self, frame):
         now = time.monotonic()

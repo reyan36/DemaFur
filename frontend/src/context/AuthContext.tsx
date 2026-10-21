@@ -7,6 +7,7 @@ import {
   signInWithPopup,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
   signOut,
 } from "firebase/auth";
 import { auth, googleProvider } from "@/lib/firebase";
@@ -17,6 +18,7 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<void>;
   signInWithEmail: (email: string, pass: string) => Promise<void>;
   signUpWithEmail: (email: string, pass: string) => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -26,6 +28,7 @@ const AuthContext = createContext<AuthContextType>({
   signInWithGoogle: async () => {},
   signInWithEmail: async () => {},
   signUpWithEmail: async () => {},
+  resetPassword: async () => {},
   logout: async () => {},
 });
 
@@ -34,10 +37,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Safety timeout: never hang loading for more than 1.2s if Firebase config is waiting
+    // Safety timeout in case Firebase never answers. Restoring a saved session can take a few
+    // seconds on a cold start; giving up sooner flashed the sign-in screen at signed-in users.
     const timeout = setTimeout(() => {
       setLoading(false);
-    }, 1200);
+    }, 8000);
 
     const unsubscribe = onAuthStateChanged(
       auth,
@@ -76,6 +80,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await createUserWithEmailAndPassword(auth, email, pass);
   };
 
+  // Firebase emails a reset link; the email template is set in the Firebase console. The
+  // link returns to our login page when this domain is authorised in Firebase Auth settings.
+  const resetPassword = async (email: string) => {
+    try {
+      await sendPasswordResetEmail(auth, email, { url: `${window.location.origin}/login` });
+    } catch (err: unknown) {
+      if ((err as { code?: string })?.code !== "auth/unauthorized-continue-uri") throw err;
+      await sendPasswordResetEmail(auth, email);
+    }
+  };
+
   const logout = async () => {
     await signOut(auth);
   };
@@ -88,6 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signInWithGoogle,
         signInWithEmail,
         signUpWithEmail,
+        resetPassword,
         logout,
       }}
     >

@@ -364,3 +364,19 @@ def test_replayed_removal_does_not_disconnect_new_link(client):
     client.app.state.pipeline.db.set_state('ring_disabled', 'false')
     assert post(client,removal).json()['duplicate']
     assert client.get('/v1/integrations/status').json()['ring_disabled'] is False
+
+
+def test_sandbox_doorbell_goes_through_the_signed_webhook(client, monkeypatch):
+    assert client.post('/v1/integrations/ring/sandbox/events',
+                       json={'delivery_id': 'parcel1', 'kind': 'button_press'}).status_code == 409
+    monkeypatch.setenv('RING_SANDBOX', 'true')
+    assert client.get('/v1/integrations/ring/devices').json()['data'][0]['id'] == 'sandbox.front-door'
+    client.post('/v1/events', json={'event_id': 'p1', 'delivery_id': 'parcel1', 'camera_id': 'cam',
+                                    'kind': 'package_delivered', 'occurred_at': now().isoformat()})
+    accepted = client.post('/v1/integrations/ring/sandbox/events',
+                           json={'delivery_id': 'parcel1', 'kind': 'button_press'}).json()
+    assert accepted['accepted'] and len(accepted['queued']) == 1
+    timeline = client.get('/v1/deliveries/parcel1').json()['timeline']
+    assert timeline[-1]['kind'] == 'doorbell' and timeline[-1]['provenance'] == 'ring_webhook'
+    # Nothing to download from a sandbox device, so no analysis job is waiting.
+    assert client.get('/v1/deliveries/parcel1').json()['analysis_coverage'] == 'not_analyzed'

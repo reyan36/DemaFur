@@ -1,5 +1,7 @@
 """Firebase Firestore database layer replacing SQLite/PostgreSQL."""
+import functools
 import os
+from concurrent.futures import ThreadPoolExecutor
 import json
 import time
 from pathlib import Path
@@ -11,6 +13,21 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 from google.cloud.firestore import Query
 
 
+# Shared by all requests for parallel reads (Database.read_many).
+_READS = ThreadPoolExecutor(max_workers=16)
+
+
+def _writes(method):
+    """Counts writes so cached reads (dashboard polling) know the data has changed."""
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        try:
+            return method(self, *args, **kwargs)
+        finally:
+            self.version += 1
+    return wrapper
+
+
 class Database:
     def __init__(self):
 
@@ -18,6 +35,7 @@ class Database:
 
         # Kept for any code that checks db.postgres
         self.postgres = False
+        self.version = 0
 
         if os.getenv('DEMAFUR_LOCAL_DB') == 'memory':
             self.fs = MemoryFirestore()
@@ -54,6 +72,7 @@ class Database:
         data.setdefault('id', delivery_id)
         return data
 
+    @_writes
     def create_delivery(self, delivery_id, camera_id, created_at,
                         resolution=None, resolved_at=None):
         ref = self.fs.collection('deliveries').document(delivery_id)
@@ -65,25 +84,62 @@ class Database:
             'resolution': resolution, 'resolved_at': resolved_at
         })
 
+    def read_many(self, *reads):
+        """Run independent reads in parallel; Firestore round trips dominate request time."""
+        return list(_READS.map(lambda read: read(), reads))
+
+    @_writes
+    def record_event(self, event_id, delivery_id, camera_id, occurred_at, payload,
+                     created_at, new_delivery):
+        """Store an event, its delivery when new, and the audit entry in one batch."""
+        batch = self.fs.batch()
+        if new_delivery:
+            batch.set(self.fs.collection('deliveries').document(delivery_id), {
+                'id': delivery_id, 'camera_id': camera_id, 'created_at': created_at,
+                'resolution': None, 'resolved_at': None})
+        batch.set(self.fs.collection('events').document(event_id), {
+            'id': event_id, 'delivery_id': delivery_id,
+            'occurred_at': occurred_at, 'payload': payload})
+        batch.set(self.fs.collection('audit').document(), {
+            'delivery_id': delivery_id, 'operation': 'event_ingested', 'created_at': created_at})
+        batch.commit()
+
+    @_writes
     def update_delivery(self, delivery_id, **fields):
         self.fs.collection('deliveries').document(delivery_id).update(fields)
 
     def delete_delivery(self, delivery_id):
-        # Delete the delivery and all related subcollection data
-        batch = self.fs.batch()
-        batch.delete(self.fs.collection('deliveries').document(delivery_id))
-        # Cascade: events, pickups, actions, evidence, audit, ring_routes, ring_jobs
-        for coll in ('events', 'pickups', 'actions', 'audit', 'ring_jobs'):
-            for doc in self.fs.collection(coll).where(
-                    filter=FieldFilter('delivery_id', '==', delivery_id)).stream():
-                batch.delete(doc.reference)
-        ev = self.fs.collection('evidence').document(delivery_id).get()
-        if ev.exists:
-            batch.delete(ev.reference)
-        for doc in self.fs.collection('ring_routes').where(
-                filter=FieldFilter('delivery_id', '==', delivery_id)).stream():
-            batch.delete(doc.reference)
-        batch.commit()
+        return self.delete_deliveries([delivery_id])
+
+    @_writes
+    def delete_deliveries(self, delivery_ids):
+        """Delete deliveries and everything recorded for them; returns their Ring jobs.
+
+        Looks up each related collection once per 30 deliveries (Firestore's 'in' limit), with
+        the lookups running in parallel, then deletes in batches. Deleting one delivery at a
+        time took seconds each on Firestore.
+        """
+        ids = list(dict.fromkeys(delivery_ids))
+        related = ('events', 'pickups', 'actions', 'audit', 'ring_jobs', 'ring_routes')
+        jobs, refs = [], []
+        with ThreadPoolExecutor(max_workers=len(related)) as pool:
+            for start in range(0, len(ids), 30):
+                chunk = ids[start:start + 30]
+                found = pool.map(lambda coll: (coll, list(self.fs.collection(coll).where(
+                    filter=FieldFilter('delivery_id', 'in', chunk)).stream())), related)
+                for coll, docs in found:
+                    refs += [doc.reference for doc in docs]
+                    if coll == 'ring_jobs':
+                        jobs += [{**doc.to_dict(), 'id': doc.id} for doc in docs]
+                # Deliveries and evidence are keyed by delivery ID; deleting a missing doc is a no-op.
+                refs += [self.fs.collection(coll).document(delivery_id)
+                         for coll in ('deliveries', 'evidence') for delivery_id in chunk]
+        for start in range(0, len(refs), 400):    # Firestore allows 500 writes per batch
+            batch = self.fs.batch()
+            for ref in refs[start:start + 400]:
+                batch.delete(ref)
+            batch.commit()
+        return jobs
 
     def list_deliveries(self, limit=None, offset=0):
         query = self.fs.collection('deliveries').order_by(
@@ -105,6 +161,7 @@ class Database:
         doc = self.fs.collection('events').document(event_id).get()
         return doc.to_dict() if doc.exists else None
 
+    @_writes
     def create_event(self, event_id, delivery_id, occurred_at, payload):
         ref = self.fs.collection('events').document(event_id)
         if ref.get().exists:
@@ -144,6 +201,7 @@ class Database:
         doc = self.fs.collection('pickups').document(pickup_id).get()
         return doc.to_dict() if doc.exists else None
 
+    @_writes
     def create_pickup(self, pickup_id, delivery_id, starts_at, ends_at,
                       created_at, revoked=0):
         self.fs.collection('pickups').document(pickup_id).set({
@@ -152,6 +210,7 @@ class Database:
             'created_at': created_at, 'revoked': revoked
         })
 
+    @_writes
     def update_pickup(self, pickup_id, **fields):
         self.fs.collection('pickups').document(pickup_id).update(fields)
 
@@ -183,6 +242,7 @@ class Database:
         doc = self.fs.collection('actions').document(action_id).get()
         return doc.to_dict() if doc.exists else None
 
+    @_writes
     def create_action(self, action_id, delivery_id, kind, status, reason,
                       created_at):
         ref = self.fs.collection('actions').document(action_id)
@@ -194,6 +254,7 @@ class Database:
             'reason': reason, 'created_at': created_at
         })
 
+    @_writes
     def update_action(self, action_id, **fields):
         self.fs.collection('actions').document(action_id).update(fields)
 
@@ -224,12 +285,14 @@ class Database:
         doc = self.fs.collection('evidence').document(delivery_id).get()
         return doc.to_dict() if doc.exists else None
 
+    @_writes
     def set_evidence(self, delivery_id, created_at, payload):
         self.fs.collection('evidence').document(delivery_id).set({
             'delivery_id': delivery_id,
             'created_at': created_at, 'payload': payload
         })
 
+    @_writes
     def delete_evidence(self, delivery_id):
         self.fs.collection('evidence').document(delivery_id).delete()
 
@@ -240,6 +303,7 @@ class Database:
         doc = self.fs.collection('ring_routes').document(doc_id).get()
         return doc.to_dict() if doc.exists else None
 
+    @_writes
     def set_ring_route(self, device_id, component_id, delivery_id):
         doc_id = f'{device_id}_{component_id}'
         self.fs.collection('ring_routes').document(doc_id).set({
@@ -248,6 +312,7 @@ class Database:
             'delivery_id': delivery_id
         })
 
+    @_writes
     def delete_ring_routes(self, device_id=None, delivery_id=None):
         query = self.fs.collection('ring_routes')
         if device_id:
@@ -259,6 +324,7 @@ class Database:
         for doc in query.stream():
             doc.reference.delete()
 
+    @_writes
     def delete_all_ring_routes(self):
         for doc in self.fs.collection('ring_routes').stream():
             doc.reference.delete()
@@ -286,6 +352,7 @@ class Database:
             return doc.to_dict().get('value')
         return None
 
+    @_writes
     def set_state(self, key, value):
         self.fs.collection('integration_state').document(key).set({
             'key': key, 'value': value
@@ -301,10 +368,12 @@ class Database:
         data.setdefault('id', job_id)
         return data
 
+    @_writes
     def create_ring_job(self, job_id, **fields):
         fields['id'] = job_id
         self.fs.collection('ring_jobs').document(job_id).set(fields)
 
+    @_writes
     def update_ring_job(self, job_id, **fields):
         self.fs.collection('ring_jobs').document(job_id).update(fields)
 
@@ -368,6 +437,7 @@ class Database:
             return expired[0]
         return None
 
+    @_writes
     def expire_exhausted_jobs(self):
         """Mark processing jobs with 5+ attempts as failed."""
         now_ts = time.time()
@@ -384,6 +454,7 @@ class Database:
                     'claim': None
                 })
 
+    @_writes
     def cancel_active_jobs(self, delivery_id=None, device_id=None):
         """Cancel queued/retry/processing jobs."""
         for state in ('queued', 'retry', 'processing'):
@@ -422,6 +493,7 @@ class Database:
 
     # ---- Audit ----
 
+    @_writes
     def add_audit(self, delivery_id, operation, created_at):
         self.fs.collection('audit').add({
             'delivery_id': delivery_id,

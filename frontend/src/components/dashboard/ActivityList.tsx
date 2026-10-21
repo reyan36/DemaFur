@@ -1,4 +1,5 @@
 import { Event } from '@/types';
+import { EVENT_LABELS, label } from '@/lib/labels';
 
 export function ActivityList({ events }: { events: Event[] }) {
   return (
@@ -14,7 +15,7 @@ export function ActivityList({ events }: { events: Event[] }) {
             <li key={event.event_id} className="px-6 py-5 flex justify-between items-center">
               <div>
                 <p className="text-sm font-semibold text-black">
-                  {event.kind.replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                  {label(EVENT_LABELS, event.kind)}
                 </p>
                 <p className="text-xs text-gray-400 mt-1 font-mono">
                   {new Date(event.occurred_at).toLocaleString()}

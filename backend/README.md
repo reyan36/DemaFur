@@ -186,3 +186,21 @@ Tests cover authentication, signed webhooks, concurrent retries, timestamp valid
 Dockerfile included; build with `docker build -t demafur .`, provide credentials through your platform, and mount a writable volume at `/data` for UID 10001. The container build has not been verified here.
 
 This is a working single-household staging MVP, not a public multi-tenant deployment. Before external launch, add user accounts and household scoping, TLS and rate/body limits at the gateway, monitored jobs, secret rotation, backup/restore operations, and real provider adapters with delivery receipts and retry handling. PostgreSQL currently serializes workflow writes with a transaction lock; larger deployments need household-level locks and a scalable worker queue. Ring registration, recording permissions, provider credentials, and real camera validation are required to activate the new pipeline. Native Alexa, lights, actual push delivery and long-term personalized learning remain outstanding.
+
+## Ring sandbox (demo without a Ring camera)
+
+The Ring Developer Playground does not deliver webhooks, so DemaFur has a sandbox mode that
+exercises the real Ring webhook handler (HMAC `X-Signature` check, v1.1 payload, household
+check, device routing) with one synthetic doorbell, `sandbox.front-door`.
+
+On the backend set `RING_SANDBOX=true`, `RING_HMAC_SIGNING_KEY` (your Ring app's key) and
+`RING_ACCOUNT_ID` (your Ring account ID). Then:
+
+- The dashboard shows "Ring sandbox connected", and the demo clip's doorbell press arrives as a
+  signed Ring webhook, marked "via Ring" in the delivery timeline.
+- `python ring_simulator.py --backend https://demafur.onrender.com --delivery parcel-001` watches a
+  parcel with the sandbox doorbell and posts a signed `button_press` to the public
+  `/v1/webhooks/ring` endpoint, exactly as Ring would (`--kind motion_detected` for motion).
+
+Sandbox devices have no recordings, so no clip download is queued. Turn the sandbox off for a
+real linked Ring account.

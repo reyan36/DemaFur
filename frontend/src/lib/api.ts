@@ -1,18 +1,12 @@
-import {
-  DashboardStats,
-  Delivery,
-  EvidenceBundle,
-  PickupWindow,
-  AnalysisJob,
-  RingIntegrationStatus,
-  RingDevice
-} from '@/types';
+import { DashboardStats, Delivery, EvidenceBundle, PickupWindow } from '@/types';
 
 const API_BASE_URL =
   typeof window !== "undefined"
     ? ""
-    : process.env.NEXT_PUBLIC_API_URL || "https://demafur.onrender.com";
-const API_KEY = process.env.NEXT_PUBLIC_DEMAFUR_API_KEY || "demafur_api_k3y_2026_s3cur3";
+    : (process.env.NEXT_PUBLIC_API_URL || "https://demafur.onrender.com").replace(/\/+$/, "");
+// Owner key for the single-household backend. Set it in the deployment's environment; it is
+// deliberately not hard-coded here because the repository is public.
+const API_KEY = process.env.NEXT_PUBLIC_DEMAFUR_API_KEY || "";
 
 function authHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
@@ -24,12 +18,21 @@ function authHeaders(): Record<string, string> {
   return headers;
 }
 
+// POST JSON to the backend with the owner key (through the /v1 proxy in the browser).
+export function apiPost(path: string, body: unknown): Promise<Response> {
+  return fetch(`${API_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(body),
+  });
+}
+
 export async function getDashboardStats(): Promise<DashboardStats> {
   try {
     const res = await fetch(`${API_BASE_URL}/v1/dashboard`, {
       headers: authHeaders(),
       cache: 'no-store',
-      signal: AbortSignal.timeout(4000),
+      signal: AbortSignal.timeout(20000),   // allow for Render waking up
     });
 
     if (!res.ok) {
@@ -44,7 +47,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   }
 }
 
-function fallbackDashboardStats(): DashboardStats {
+export function fallbackDashboardStats(): DashboardStats {
   return {
     activePackages: 0,
     historicalPackages: 0,
@@ -57,17 +60,12 @@ function fallbackDashboardStats(): DashboardStats {
   };
 }
 
-export async function getActiveDeliveries(): Promise<Delivery[]> {
-  const stats = await getDashboardStats();
-  return stats.activeDeliveries || [];
-}
-
 export async function getAllDeliveries(limit = 50, offset = 0): Promise<Delivery[]> {
   try {
     const res = await fetch(`${API_BASE_URL}/v1/deliveries?limit=${limit}&offset=${offset}`, {
       headers: authHeaders(),
       cache: 'no-store',
-      signal: AbortSignal.timeout(4000),
+      signal: AbortSignal.timeout(20000),
     });
     if (!res.ok) return [];
     const data = await res.json();
@@ -83,7 +81,7 @@ export async function getDelivery(id: string): Promise<Delivery | null> {
     const res = await fetch(`${API_BASE_URL}/v1/deliveries/${id}`, {
       headers: authHeaders(),
       cache: 'no-store',
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(20000),   // allow for Render waking up
     });
     if (!res.ok) return null;
     return await res.json();
@@ -144,10 +142,6 @@ export async function getEvidence(deliveryId: string): Promise<EvidenceBundle | 
   }
 }
 
-export function getEvidenceZipUrl(deliveryId: string): string {
-  return `${API_BASE_URL}/v1/deliveries/${deliveryId}/evidence.zip`;
-}
-
 export async function downloadEvidenceZip(deliveryId: string): Promise<Blob | null> {
   try {
     const res = await fetch(`${API_BASE_URL}/v1/deliveries/${deliveryId}/evidence.zip`, {
@@ -163,88 +157,6 @@ export async function downloadEvidenceZip(deliveryId: string): Promise<Blob | nu
   }
 }
 
-export async function getAnalysisJobs(): Promise<AnalysisJob[]> {
-  try {
-    const res = await fetch(`${API_BASE_URL}/v1/analysis/jobs`, {
-      headers: authHeaders(),
-      cache: 'no-store'
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.items || [];
-  } catch (err) {
-    console.error('Failed to fetch analysis jobs:', err);
-    return [];
-  }
-}
-
-export function getClipUrl(jobId: string): string {
-  return `${API_BASE_URL}/v1/analysis/jobs/${jobId}/clip`;
-}
-
-export async function getIntegrationStatus(): Promise<RingIntegrationStatus | null> {
-  try {
-    const res = await fetch(`${API_BASE_URL}/v1/integrations/status`, {
-      headers: authHeaders(),
-      cache: 'no-store'
-    });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch (err) {
-    console.error('Failed to fetch integration status:', err);
-    return null;
-  }
-}
-
-export async function getRingDevices(): Promise<RingDevice[]> {
-  try {
-    const res = await fetch(`${API_BASE_URL}/v1/integrations/ring/devices`, {
-      headers: authHeaders(),
-      cache: 'no-store'
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.data || [];
-  } catch (err) {
-    console.error('Failed to fetch Ring devices:', err);
-    return [];
-  }
-}
-
-export async function watchDelivery(
-  deviceId: string,
-  componentId: string,
-  deliveryId: string
-): Promise<{ delivery_id: string; camera_id: string; state: string }> {
-  const res = await fetch(`${API_BASE_URL}/v1/integrations/ring/watch`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify({
-      device_id: deviceId,
-      component_id: componentId,
-      delivery_id: deliveryId
-    })
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Failed to start watch: ${text}`);
-  }
-  return await res.json();
-}
-
-export async function stopWatchDelivery(deliveryId: string): Promise<{ watching: boolean }> {
-  const res = await fetch(`${API_BASE_URL}/v1/integrations/ring/watch/${deliveryId}`, {
-    method: 'DELETE',
-    headers: authHeaders()
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Failed to stop watch: ${text}`);
-  }
-  return await res.json();
-}
-
-
 // Actions the backend queued for a delivery: owner notification and porch deterrents.
 export interface DeliveryAction {
   id: string;
@@ -257,7 +169,7 @@ export interface DeliveryAction {
 
 export async function getDeliveryActions(deliveryId: string): Promise<DeliveryAction[]> {
   try {
-    const res = await fetch(`${API_BASE_URL}/v1/actions`, {
+    const res = await fetch(`${API_BASE_URL}/v1/actions?delivery_id=${encodeURIComponent(deliveryId)}`, {
       headers: authHeaders(),
       cache: 'no-store',
       signal: AbortSignal.timeout(6000),
@@ -292,5 +204,34 @@ export async function getDeliverySummary(deliveryId: string): Promise<DeliverySu
   } catch (err) {
     console.error('Failed to fetch summary:', err);
     return null;
+  }
+}
+
+export async function deleteDelivery(deliveryId: string): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/v1/deliveries/${deliveryId}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`Could not delete ${deliveryId} (${res.status})`);
+  }
+}
+
+// Deletes every delivery a few at a time so the caller can show progress (0-100).
+export async function purgeDeliveries(onProgress: (percent: number) => void): Promise<number> {
+  let done = 0;
+  let limit = 5;
+  for (;;) {
+    const res = await fetch(`${API_BASE_URL}/v1/deliveries/purge?limit=${limit}`, {
+      method: 'POST',
+      headers: authHeaders(),
+    });
+    if (!res.ok) throw new Error(`Reset failed (${res.status})`);
+    // A backend without chunked purge deletes everything at once and sends no `remaining`.
+    const { purged = 0, remaining = 0 } = await res.json();
+    done += purged;
+    onProgress(done + remaining === 0 ? 100 : Math.round((done / (done + remaining)) * 100));
+    if (!remaining || !purged) return done;
+    limit = Math.min(100, Math.max(5, Math.ceil(remaining / 8)));   // about ten steps in total
   }
 }

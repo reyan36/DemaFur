@@ -27,8 +27,7 @@ export default function Login() {
       router.push("/dashboard");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Google sign in failed");
-    } finally {
-      setLoading(false);
+      setLoading(false);   // on success it stays busy until the dashboard opens
     }
   };
 
@@ -41,8 +40,7 @@ export default function Login() {
       router.push("/dashboard");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Invalid email or password");
-    } finally {
-      setLoading(false);
+      setLoading(false);   // on success it stays busy until the dashboard opens
     }
   };
 
@@ -85,7 +83,7 @@ export default function Login() {
               d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
             />
           </svg>
-          Continue with Google
+          {loading ? "Signing in..." : "Continue with Google"}
         </button>
 
         <div className="flex items-center gap-3">
@@ -108,7 +106,12 @@ export default function Login() {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-black mb-1">Password</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold text-black">Password</label>
+              <Link href="/reset-password" className="text-xs font-medium text-gray-500 hover:text-black">
+                Forgot password?
+              </Link>
+            </div>
             <input
               type="password"
               required

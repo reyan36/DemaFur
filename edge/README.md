@@ -62,6 +62,9 @@ export DEMAFUR_WEBHOOK_SECRET="<same value as the backend>"
 python run.py --loop
 ```
 
+On Windows (PowerShell) activate with `.venv\Scripts\Activate.ps1` and set the secret with
+`$env:DEMAFUR_WEBHOOK_SECRET = "<same value as the backend>"`.
+
 Then open the live annotated view at http://127.0.0.1:8090/. The dashboard shows the same stream
 when `frontend/.env.local` contains `NEXT_PUBLIC_EDGE_STREAM_URL=http://127.0.0.1:8090`.
 
@@ -80,6 +83,25 @@ when `frontend/.env.local` contains `NEXT_PUBLIC_EDGE_STREAM_URL=http://127.0.0.
 
 Press `q` in the video window to stop.
 
+## Against the deployed backend (Firestore)
+
+`DEMAFUR_LOCAL_DB=memory` keeps everything in the backend process. To store the deliveries in
+Firestore and see them on the deployed dashboard, point the edge detector at Render instead:
+
+1. Render: `DEMAFUR_WEBHOOK_SECRET` must be set (24+ characters, different from `DEMAFUR_API_KEY`).
+   Leave `DEMAFUR_LOCAL_DB` unset. `DEMAFUR_AUTO_DETER` defaults to on.
+2. Edge laptop: set the same `DEMAFUR_WEBHOOK_SECRET`, then
+   `python run.py --loop --backend https://demafur.onrender.com`. The first event can take up to a
+   minute while Render wakes up; the edge keeps the video running meanwhile.
+3. Vercel: add `NEXT_PUBLIC_EDGE_STREAM_URL=http://127.0.0.1:8090` and redeploy (it is baked in at
+   build time). Browsers allow an `https` page to load `http://127.0.0.1`, so the live view works
+   on the laptop running the edge detector; other viewers see "Camera offline" unless you expose
+   port 8090 over HTTPS (for example `cloudflared tunnel --url http://127.0.0.1:8090`) and use
+   that URL instead.
+
+Every `--loop` lap is a new delivery saved in Firestore, and each lap that ends in a removal adds
+an active incident. Clear demo data with `POST /v1/deliveries/purge` (owner key) between runs.
+
 ## How it talks to the backend
 
 Each event is posted to `POST /v1/webhooks/events`, signed with HMAC-SHA256 over
@@ -97,7 +119,7 @@ Risk, in short (`backend/demafur/risk.py`):
 ## Simulated hardware
 
 There is no Ring speaker or floodlight in this project. The warning is spoken through the
-computer's speaker (macOS `say`) and the porch lights are shown by brightening the video with a
+computer's speaker (macOS `say`, Windows speech, or Linux `spd-say`/`espeak`) and the porch lights are shown by brightening the video with a
 badge. `porch.py` is where a real Ring Floodlight or Chime call would go.
 
 ## Footage
