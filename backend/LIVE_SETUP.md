@@ -1,5 +1,8 @@
 # Connect your first real delivery
 
+> **Note:** this guide was written for an earlier Supabase/Railway setup. The current deployment uses Firebase Firestore and Render (see [README.md](README.md)); the Ring and AI provider steps still apply.
+
+
 First complete [STACK_SETUP.md](STACK_SETUP.md) for Supabase and AWS. Ring ingestion and AI calls have been tested with mocked responses; live hardware and provider validation is still required.
 
 ## 1. Prepare local configuration

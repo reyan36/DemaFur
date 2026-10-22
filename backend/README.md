@@ -2,9 +2,9 @@
 
 For persistent demo deliveries and incident ZIP verification, see [DEMO_SCENARIOS.md](DEMO_SCENARIOS.md). These are normalized API events, not a Ring virtual camera.
 
-**Version 0.3:** Supabase PostgreSQL migrations, AWS Bedrock text/vision analysis with automatic Groq fallback (default on when a Groq key is set) are implemented alongside the delivery workflow and Ring adapter. Start with [STACK_SETUP.md](STACK_SETUP.md), then [LIVE_SETUP.md](LIVE_SETUP.md). Live Supabase, AWS and Ring validation is still required. Alexa and physical actions remain simulated.
+FastAPI backend for a single-household staging MVP. The Next.js dashboard on Vercel calls this API on Render; data lives in Firebase Firestore. Incident reports use Groq (`AI_PROVIDER=groq`); Amazon Bedrock is also supported (`AI_PROVIDER=bedrock`) but not used in the live demo. Ring linking, webhooks and recording download are implemented; without a Ring device, the [Ring sandbox](#ring-sandbox-demo-without-a-ring-camera) drives the webhook path. Physical actions (lights, warnings) are simulated. The included `/review` page is a staging console, not the dashboard.
 
-FastAPI backend for a single-household staging MVP. The planned Next.js/Vercel dashboard calls FastAPI on Railway; PostgreSQL lives on Supabase Cloud. The included `/review` page is a staging staconsole, not the Next.js dashboard.
+[STACK_SETUP.md](STACK_SETUP.md) and [LIVE_SETUP.md](LIVE_SETUP.md) describe an earlier Supabase/Railway setup; their Ring and AI steps still apply, but use Firestore and Render for the database and hosting.
 
 The supplied diagram is treated as design reference. Its identity-tracking label is intentionally excluded in favour of the written privacy requirements. No facial recognition, person IDs, demographic inference, or continuous video monitoring is implemented.
 

@@ -1,5 +1,8 @@
 # DemaFur: Supabase, Railway and Bedrock
 
+> **Note:** this guide was written for an earlier Supabase/Railway setup. The current deployment uses Firebase Firestore and Render (see [README.md](README.md)); the Ring and AI provider steps still apply.
+
+
 ## Architecture and current scope
 
 Next.js on Vercel → authenticated FastAPI on Railway → Supabase PostgreSQL.

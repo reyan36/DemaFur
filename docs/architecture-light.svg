@@ -84,10 +84,10 @@
   <g transform="translate(505, 45)">
     <rect width="180" height="110" rx="10" fill="#FAFAFA" stroke="#E4E4E7" stroke-width="1.2"/>
     <rect x="14" y="14" width="7" height="7" rx="2" fill="#52525B"/>
-    <text x="28" y="21" class="tag">03 · VISION AI</text>
-    <text x="14" y="48" class="title">Multimodal AI</text>
-    <text x="14" y="68" class="desc">AWS Bedrock (Claude 3.5)</text>
-    <text x="14" y="84" class="desc">Groq Fallback (Qwen 2.5)</text>
+    <text x="28" y="21" class="tag">03 · AI REPORTS</text>
+    <text x="14" y="48" class="title">Incident Reports</text>
+    <text x="14" y="68" class="desc">Groq LLM, from event facts</text>
+    <text x="14" y="84" class="desc">Bedrock supported (optional)</text>
     <text x="14" y="99" class="desc" font-size="10" fill="#71717A">Zero-Identity Reasoning</text>
   </g>
 
